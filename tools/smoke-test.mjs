@@ -164,22 +164,23 @@ assert.equal(document.querySelectorAll("#cal-grid .event").length, 2);
 assert.equal(document.querySelectorAll("#cal-allday .allday").length, 1);
 assert.match(document.querySelectorAll("#cal-grid .event")[1].getAttribute("style"), /width: calc\(50% - 31px\)/, "overlapping events share the width");
 
-// Claude marks inbox mail worth a task; nothing is added until the user confirms
-assert.equal(calls.filter((c) => c.path === "/api/claude").length, 1, "one triage call for the new mail");
-assert.equal(document.querySelectorAll(".mail-suggest").length, 1);
-assert.match(document.querySelector(".mail-item .mail-suggest-title").textContent, /Saada Marile pakkumine/);
-assert.equal(sent("POST", "/tasks").length, 0, "marking a mail adds no task");
-click(document.querySelector(".mail-suggest .btn"));
-assert.equal($("task-dialog").hasAttribute("open"), true);
-assert.equal($("task-title").value, "Saada Marile pakkumine");
-assert.equal($("read-view").hidden, true, "the suggestion button does not open the mail");
-submit($("task-form"));
-await tick();
+// Claude turns inbox mail into tasks, but only when the user clicks the button
+assert.equal(calls.filter((c) => c.path === "/api/claude").length, 0, "nothing goes to Claude without a click");
+click($("mail-to-tasks"));
+await tick(60);
 {
+  assert.equal(calls.filter((c) => c.path === "/api/claude").length, 1);
   const added = sent("POST", "/tasks");
-  assert.equal(added.length, 1);
+  assert.equal(added.length, 1, "one task for the one mail Claude picked");
+  assert.equal(added[0].body.title, "Saada Marile pakkumine");
+  assert.equal(added[0].body.importance, "high");
   assert.equal(added[0].body.linkedResources[0].webUrl, "https://outlook.office.com/mail/m1");
-  assert.equal(document.querySelectorAll(".mail-suggest").length, 0, "the mark goes away once the task is added");
+  assert.equal(document.querySelectorAll(".mail-task-added").length, 1);
+  assert.match($("toast").textContent, /2 kirja ja lisas 1 ülesannet/);
+  click($("mail-to-tasks"));
+  await tick(60);
+  assert.equal(calls.filter((c) => c.path === "/api/claude").length, 1, "mail already looked at is not sent again");
+  assert.equal(sent("POST", "/tasks").length, 1, "and gets no second task");
   calls.splice(calls.indexOf(added[0]), 1); // keep the later checks counting from zero
 }
 assert.equal(document.querySelectorAll("#task-list .task").length, 3);

@@ -69,9 +69,10 @@ Open the site, sign in, then use "Install app" (Chrome, Edge) or Share → "Add 
 - The function holds no Microsoft Graph token, so it cannot read or send mail.
 - Claude's output only fills an editable form. Saving a task or sending a reply is a separate click.
 - Email content is passed to Claude as data; instructions inside an email are not followed.
-- Inbox suggestions: the sender, subject and first lines of each new inbox email are sent to Claude
-  once, automatically, so it can mark the ones worth a task. A mark adds nothing; the user confirms
-  each task. Verdicts are remembered in the browser, so an email is not sent twice.
+- "Claude: tee kirjadest ülesanded": on the user's click, the sender, subject and first lines of the
+  inbox emails not yet looked at are sent to Claude, and a To Do task is added for each one worth
+  doing. Nothing goes to Claude without that click. Verdicts are remembered in the browser, so an
+  email is sent once and never gets a second task.
 
 ## Working on it
 

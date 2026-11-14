@@ -129,8 +129,9 @@ button.link { border: 0; padding: 0; background: none; color: var(--brand); text
 .mail-top time { color: var(--muted); font-size: .8rem; }
 .mail-subject, .mail-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mail-preview { color: var(--muted); font-size: .87rem; }
-.mail-suggest { display: flex; align-items: center; gap: 6px; margin-top: 6px; padding: 4px 4px 4px 8px; border: 1px solid var(--ai); border-radius: 8px; cursor: default; }
-.mail-suggest-title { flex: 1; min-width: 0; font-size: .85rem; color: var(--ai); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mail-task-added { margin-top: 4px; font-size: .8rem; color: var(--ai); }
+.pane-tools { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.pane-tools .btn { flex: 1; }
 .btn.small { min-height: 28px; padding: 2px 8px; font-size: .82rem; flex: none; }
 .btn.ghost { border-color: transparent; background: none; }
 .mail-item.unread .mail-from, .mail-item.unread .mail-subject { font-weight: 700; }
