@@ -40,6 +40,13 @@ function getClient() {
   return client;
 }
 
+// What the Claude service answered, for the signed-in user to pass on when
+// something is misconfigured. It holds no key and no email text.
+function upstreamDetail(err) {
+  const message = String(err?.error?.error?.message || err?.error?.message || err?.message || "").slice(0, 300);
+  return `${BEDROCK ? "Bedrock " + process.env.AWS_REGION : "Anthropic"}, model ${MODEL}, HTTP ${err?.status}: ${message}`;
+}
+
 const str = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
 
 function json(status, body) {
@@ -140,7 +147,10 @@ async function handler(request, context) {
   } catch (err) {
     if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
       context.error(`Claude API key rejected or model not allowed (${err.status}): ${err.message}`);
-      return json(500, { error: "The Claude API key was rejected, or it has no access to the model." });
+      return json(500, {
+        error: "The Claude API key was rejected, or it has no access to the model.",
+        detail: upstreamDetail(err),
+      });
     }
     if (err instanceof Anthropic.RateLimitError) {
       return json(429, { error: "Claude is busy right now. Try again in a moment." });
@@ -150,7 +160,7 @@ async function handler(request, context) {
     }
     if (err instanceof Anthropic.APIError) {
       context.error(`Anthropic API error ${err.status}: ${err.message}`);
-      return json(502, { error: "Claude returned an error. Try again." });
+      return json(502, { error: "Claude returned an error. Try again.", detail: upstreamDetail(err) });
     }
     throw err;
   }

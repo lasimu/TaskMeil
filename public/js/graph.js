@@ -86,7 +86,9 @@ async function callClaude(payload) {
     /* not JSON */
   }
   if (!res.ok || !data?.result) {
-    throw new Error(CLAUDE_ERRORS[res.status] || "Claude'i vastust ei saadud kätte. Proovi uuesti.");
+    const message = CLAUDE_ERRORS[res.status] || "Claude'i vastust ei saadud kätte. Proovi uuesti.";
+    const detail = data?.detail || (CLAUDE_ERRORS[res.status] ? "" : data?.error);
+    throw new Error(detail ? `${message} (${detail})` : message);
   }
   return data.result;
 }
