@@ -210,6 +210,15 @@
     <label>Asukoht
       <input id="event-location" type="text" maxlength="255">
     </label>
+    <label id="event-notes-label">Kirjeldus
+      <textarea id="event-notes" rows="4"></textarea>
+    </label>
+    <dl id="event-details" class="stats event-details" hidden>
+      <dt>Korraldaja</dt><dd id="event-organizer"></dd>
+      <dt>Osalejad</dt><dd id="event-attendees"></dd>
+      <dt>Koosolek</dt><dd><a id="event-join" target="_blank" rel="noopener">Liitu veebikoosolekuga</a></dd>
+      <dt>Sisu</dt><dd id="event-body" class="event-body"></dd>
+    </dl>
     <div class="dialog-actions">
       <button id="event-delete" type="button" class="btn danger" hidden>Kustuta</button>
       <a id="event-outlook" class="btn" target="_blank" rel="noopener" hidden>Ava Outlookis</a>

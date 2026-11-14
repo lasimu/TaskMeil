@@ -71,7 +71,9 @@ button.link { border: 0; padding: 0; background: none; color: var(--brand); text
 
 .error { color: var(--danger); }
 .empty { color: var(--muted); padding: 24px 16px; text-align: center; list-style: none; }
-.meta, .hint { color: var(--muted); font-size: .87rem; margin: 6px 0; }
+.meta, .event-details { max-height: 38vh; overflow-y: auto; }
+.event-body { white-space: pre-wrap; overflow-wrap: anywhere; }
+.hint { color: var(--muted); font-size: .87rem; margin: 6px 0; }
 
 /* ---------- sign-in ---------- */
 .login {

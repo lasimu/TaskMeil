@@ -3,7 +3,7 @@
 // delete it, click a day in the month to open that day.
 
 import { graph, localDate } from "./graph.js";
-import { $, h, toast, attempt, fmtTime, fmtDayTitle, startOfDay, sameDay, fromGraphUtc, toGraphUtc } from "./util.js";
+import { $, h, toast, attempt, fmtTime, fmtDayTitle, startOfDay, sameDay, fromGraphUtc, toGraphUtc, htmlToText, who, addr } from "./util.js";
 
 const HOUR_PX = 48;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -313,8 +313,53 @@ function openEventDialog(ev, start) {
   $("event-delete").hidden = !ev;
   $("event-outlook").hidden = !ev?.webLink;
   if (ev?.webLink) $("event-outlook").href = ev.webLink;
+  // A new event gets a description field; an existing one shows its content,
+  // which is changed in Outlook so that invitation formatting is not lost.
+  $("event-notes").value = "";
+  $("event-notes-label").hidden = !!ev;
+  $("event-details").hidden = true;
   $("event-dialog").showModal();
   $("event-title").focus();
+  if (ev) showEventDetails(ev).catch((err) => console.warn("Event details not loaded:", err.message));
+}
+
+const RESPONSES = { accepted: "tuleb", declined: "ei tule", tentativelyAccepted: "võib-olla" };
+
+// Organizer, attendees, meeting link and description of an existing event.
+async function showEventDetails(ev) {
+  const full = await graph(
+    `/me/events/${ev.id}?$select=body,attendees,organizer,isOrganizer,onlineMeeting`
+  );
+  if (state.editing !== ev || !$("event-dialog").hasAttribute("open")) return; // closed or another event opened meanwhile
+  const row = (id, shown) => {
+    $(id).hidden = !shown;
+    $(id).previousElementSibling.hidden = !shown;
+  };
+
+  const attendees = full.attendees || [];
+  $("event-organizer").textContent = who(full.organizer);
+  row("event-organizer", !!full.organizer && (!full.isOrganizer || attendees.length > 0));
+
+  $("event-attendees").textContent = attendees
+    .map((a) => {
+      const answer = RESPONSES[a.status?.response];
+      return who(a) + (answer ? ` (${answer})` : "");
+    })
+    .join(", ");
+  row("event-attendees", attendees.length > 0);
+
+  const join = full.onlineMeeting?.joinUrl;
+  if (join) $("event-join").href = join;
+  $("event-join").parentElement.hidden = !join;
+  $("event-join").parentElement.previousElementSibling.hidden = !join;
+
+  const text = (full.body?.contentType === "html" ? htmlToText(full.body.content || "") : full.body?.content || "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  $("event-body").textContent = text;
+  row("event-body", !!text);
+
+  $("event-details").hidden = !(text || join || attendees.length);
 }
 
 async function saveEvent() {
@@ -334,6 +379,8 @@ async function saveEvent() {
     location: { displayName: $("event-location").value.trim() },
   };
   const ev = state.editing;
+  const notes = $("event-notes").value.trim();
+  if (!ev && notes) body.body = { contentType: "text", content: notes };
   if (ev) await graph(`/me/events/${ev.id}`, { method: "PATCH", body });
   else await graph("/me/events", { method: "POST", body });
   $("event-dialog").close();

@@ -143,6 +143,18 @@ globalThis.fetch = window.fetch = async (url, options = {}) => {
     ] });
   }
   if (p === "/me/events" && method === "POST") return json({ id: "e4" }, 201);
+  if (p === "/me/events/e1" && method === "GET") {
+    return json({
+      id: "e1", isOrganizer: false,
+      organizer: person("Mari Maasikas", "mari@klient.ee"),
+      attendees: [
+        { ...person("Mina Ise", "mina@uusmaa.ee"), status: { response: "accepted" } },
+        { ...person("Kolleeg", "kolleeg@uusmaa.ee"), status: { response: "none" } },
+      ],
+      onlineMeeting: { joinUrl: "https://teams.example/join/1" },
+      body: { contentType: "html", content: "<html><body><p>Arutame <b>pakkumist</b>.</p><script>x()</script><p>Võta leping kaasa.</p></body></html>" },
+    });
+  }
   throw new Error(`Unexpected request: ${method} ${u.pathname}`);
 };
 
@@ -254,11 +266,15 @@ $("cal-grid").dispatchEvent(new window.MouseEvent("click", { bubbles: true, clie
 assert.equal($("event-dialog").hasAttribute("open"), true);
 assert.equal($("event-start").value, "14:00");
 assert.equal($("event-end").value, "14:30");
+assert.equal($("event-notes-label").hidden, false, "a new event has a description field");
+assert.equal($("event-details").hidden, true);
 $("event-title").value = "Objekti näitamine";
+$("event-notes").value = "Võtmed on kontoris.";
 submit($("event-form"));
 await tick();
 const ev = sent("POST", "/me/events")[0].body;
 assert.equal(ev.subject, "Objekti näitamine");
+assert.deepEqual(ev.body, { contentType: "text", content: "Võtmed on kontoris." });
 assert.equal(new Date(ev.start.dateTime + "Z").getTime(), at(14).getTime());
 assert.equal(ev.start.timeZone, "UTC");
 
@@ -266,6 +282,14 @@ assert.equal(ev.start.timeZone, "UTC");
 click(document.querySelector("#cal-grid .event"));
 assert.equal($("event-title").value, "Koosolek");
 assert.equal($("event-delete").hidden, false);
+await tick();
+assert.equal($("event-details").hidden, false, "an existing event shows its content");
+assert.equal($("event-notes-label").hidden, true);
+assert.equal($("event-organizer").textContent, "Mari Maasikas");
+assert.equal($("event-attendees").textContent, "Mina Ise (tuleb), Kolleeg");
+assert.equal($("event-join").href, "https://teams.example/join/1");
+assert.match($("event-body").textContent, /Arutame pakkumist\.\s+Võta leping kaasa\./);
+assert.doesNotMatch($("event-body").textContent, /x\(\)/);
 click($("event-cancel"));
 
 // Week and month views
