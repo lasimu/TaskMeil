@@ -8,6 +8,7 @@ const state = {
   listId: null,
   tasks: [],
   proposalMail: null, // the email a Claude suggestion came from
+  onSaved: null, // called once the user has confirmed the suggestion
 };
 
 export function initTasks() {
@@ -128,8 +129,9 @@ async function createTask({ title, notes, due, importance, mail }) {
 }
 
 // Shows Claude's suggestion for the user to edit. It is saved only on "Lisa ülesanne".
-export function proposeTask(suggestion, mail) {
+export function proposeTask(suggestion, mail, onSaved = null) {
   state.proposalMail = mail;
+  state.onSaved = onSaved;
   $("task-title").value = suggestion.title || "";
   $("task-notes").value = suggestion.notes || "";
   $("task-due").value = suggestion.due_date || "";
@@ -150,4 +152,6 @@ async function saveProposal() {
     mail: state.proposalMail,
   });
   $("task-dialog").close();
+  state.onSaved?.();
+  state.onSaved = null;
 }

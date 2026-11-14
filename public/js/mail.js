@@ -1,11 +1,11 @@
 // Inbox list, reading pane and the compose/reply dialog.
 
-import { graph, askClaude } from "./graph.js";
+import { graph, askClaude, askClaudeTriage } from "./graph.js";
 import { getAccount } from "./auth.js";
 import { $, h, toast, attempt, busy, escapeHtml, fmtShort, fmtFull, addr, who, htmlToText } from "./util.js";
 import { proposeTask } from "./tasks.js";
 
-const LIST_FIELDS = "id,subject,from,receivedDateTime,isRead,bodyPreview,hasAttachments";
+const LIST_FIELDS = "id,subject,from,receivedDateTime,isRead,bodyPreview,hasAttachments,webLink";
 const READ_FIELDS = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,body,hasAttachments,webLink,isRead";
 
 const state = {
@@ -71,6 +71,7 @@ export async function loadInbox({ quiet = false } = {}) {
   state.messages = data.value;
   state.nextLink = data["@odata.nextLink"] || null;
   renderList();
+  if (!query) triage();
 }
 
 async function loadMore() {
@@ -79,6 +80,111 @@ async function loadMore() {
   state.messages.push(...data.value);
   state.nextLink = data["@odata.nextLink"] || null;
   renderList();
+  if (!$("mail-search").value.trim()) triage();
+}
+
+// ---------- Claude's task suggestions ----------
+// Claude looks at the sender, subject and first lines of inbox mail it has not
+// seen yet and marks the ones worth a to-do item. Each verdict is remembered in
+// this browser, so a message is sent to Claude once. Marking adds nothing by
+// itself: the user confirms each task in the task dialog.
+
+const TRIAGE_BATCH = 30;
+const TRIAGE_KEEP = 500;
+const triageKey = () => `taskmeil.triage.${getAccount()?.username || ""}`;
+let verdicts = null; // message id -> { title, due_date, importance } | 0 (no task, added or dismissed)
+let triageBusy = false;
+let triagePausedUntil = 0;
+
+function loadVerdicts() {
+  if (verdicts) return verdicts;
+  verdicts = new Map();
+  try {
+    for (const [id, v] of JSON.parse(localStorage.getItem(triageKey()) || "[]")) verdicts.set(id, v);
+  } catch {
+    /* no storage, or nothing saved yet */
+  }
+  return verdicts;
+}
+
+function saveVerdicts() {
+  try {
+    localStorage.setItem(triageKey(), JSON.stringify([...verdicts].slice(-TRIAGE_KEEP)));
+  } catch {
+    /* storage unavailable: verdicts last until the page is closed */
+  }
+}
+
+function setVerdict(id, value) {
+  loadVerdicts().delete(id); // re-insert so the newest stay when old ones are trimmed
+  verdicts.set(id, value);
+  saveVerdicts();
+}
+
+async function triage() {
+  if (triageBusy || Date.now() < triagePausedUntil) return;
+  const known = loadVerdicts();
+  const fresh = state.messages.filter((m) => !known.has(m.id)).slice(0, TRIAGE_BATCH);
+  if (!fresh.length) return;
+  triageBusy = true;
+  try {
+    const picks = await askClaudeTriage(
+      fresh.map((m) => ({
+        id: m.id,
+        from: `${who(m.from)} <${addr(m.from)}>`,
+        subject: m.subject || "",
+        received: m.receivedDateTime,
+        preview: m.bodyPreview || "",
+      }))
+    );
+    for (const m of fresh) known.set(m.id, 0);
+    for (const p of picks) known.set(p.id, { title: p.title, due_date: p.due_date, importance: p.importance });
+    saveVerdicts();
+    renderList();
+  } catch (err) {
+    // Suggestions are an extra: stay quiet and try again later.
+    console.warn("Claude task suggestions unavailable:", err.message);
+    triagePausedUntil = Date.now() + 10 * 60 * 1000;
+  } finally {
+    triageBusy = false;
+  }
+  if (state.messages.some((m) => !known.has(m.id)) && Date.now() >= triagePausedUntil) triage();
+}
+
+function suggestionRow(m) {
+  const pick = loadVerdicts().get(m.id);
+  if (!pick) return null;
+  const stop = (fn) => (e) => {
+    e.stopPropagation();
+    fn();
+  };
+  return h("div", { class: "mail-suggest", onclick: (e) => e.stopPropagation() },
+    h("span", { class: "mail-suggest-title", title: "Claude'i soovitus" }, `✓ ${pick.title}`),
+    h("button", {
+      class: "btn small",
+      type: "button",
+      onclick: stop(() =>
+        proposeTask(
+          { ...pick, notes: `Kiri: ${who(m.from)} – ${m.subject || "(teemata)"}` },
+          m,
+          () => {
+            setVerdict(m.id, 0);
+            renderList();
+          }
+        )
+      ),
+    }, "Lisa ülesanne"),
+    h("button", {
+      class: "btn small ghost",
+      type: "button",
+      "aria-label": "Ei ole ülesanne",
+      title: "Ei ole ülesanne",
+      onclick: stop(() => {
+        setVerdict(m.id, 0);
+        renderList();
+      }),
+    }, "✕")
+  );
 }
 
 function renderList() {
@@ -98,7 +204,8 @@ function renderList() {
           h("time", {}, fmtShort(new Date(m.receivedDateTime)))
         ),
         h("div", { class: "mail-subject" }, (m.hasAttachments ? "📎 " : "") + (m.subject || "(teemata)")),
-        h("div", { class: "mail-preview" }, m.bodyPreview || "")
+        h("div", { class: "mail-preview" }, m.bodyPreview || ""),
+        suggestionRow(m)
       )
     )
   );

@@ -20,6 +20,7 @@ for (const key of ["document", "DOMParser", "Node", "location", "HTMLElement"]) 
   globalThis[key] = window[key];
 }
 globalThis.window = window;
+globalThis.localStorage = window.localStorage;
 globalThis.confirm = window.confirm = () => true;
 const proto = window.HTMLDialogElement.prototype;
 if (!proto.showModal) {
@@ -88,6 +89,11 @@ globalThis.fetch = window.fetch = async (url, options = {}) => {
 
   if (u.pathname === "/api/claude") {
     assert.equal(options.headers["X-Taskmeil-Token"], "id-token");
+    if (body.action === "triage") {
+      assert.deepEqual(body.emails.map((e) => e.id), ["m1", "m2"]);
+      assert.match(body.emails[0].from, /Mari Maasikas <mari@klient.ee>/);
+      return json({ result: { tasks: [{ id: "m1", title: "Saada Marile pakkumine", due_date: "2026-11-20", importance: "high" }] } });
+    }
     assert.match(body.email.body, /palun saatke pakkumine reedeks/);
     assert.doesNotMatch(body.email.body, /alert|color:red/);
     return body.action === "task"
@@ -149,6 +155,26 @@ assert.equal(document.querySelectorAll("#cal-grid .event").length, 2);
 assert.equal(document.querySelectorAll("#cal-allday .allday").length, 1);
 assert.match(document.querySelectorAll("#cal-grid .event")[1].getAttribute("style"), /width: calc\(50% - 31px\)/, "overlapping events share the width");
 
+// Claude marks inbox mail worth a task; nothing is added until the user confirms
+assert.equal(calls.filter((c) => c.path === "/api/claude").length, 1, "one triage call for the new mail");
+assert.equal(document.querySelectorAll(".mail-suggest").length, 1);
+assert.match(document.querySelector(".mail-item .mail-suggest-title").textContent, /Saada Marile pakkumine/);
+assert.equal(sent("POST", "/tasks").length, 0, "marking a mail adds no task");
+click(document.querySelector(".mail-suggest .btn"));
+assert.equal($("task-dialog").hasAttribute("open"), true);
+assert.equal($("task-title").value, "Saada Marile pakkumine");
+assert.equal($("read-view").hidden, true, "the suggestion button does not open the mail");
+submit($("task-form"));
+await tick();
+{
+  const added = sent("POST", "/tasks");
+  assert.equal(added.length, 1);
+  assert.equal(added[0].body.linkedResources[0].webUrl, "https://outlook.office.com/mail/m1");
+  assert.equal(document.querySelectorAll(".mail-suggest").length, 0, "the mark goes away once the task is added");
+  calls.splice(calls.indexOf(added[0]), 1); // keep the later checks counting from zero
+}
+assert.equal(document.querySelectorAll("#task-list .task").length, 3);
+
 // Reading a message
 click(document.querySelector(".mail-item"));
 await tick();
@@ -175,7 +201,7 @@ const newTask = sent("POST", "/tasks")[0].body;
 assert.equal(newTask.importance, "high");
 assert.equal(newTask.linkedResources[0].webUrl, "https://outlook.office.com/mail/m1");
 assert.equal(new Date(newTask.dueDateTime.dateTime + "Z").getTime(), new Date(2026, 10, 20).getTime());
-assert.equal(document.querySelectorAll("#task-list .task").length, 3);
+assert.equal(document.querySelectorAll("#task-list .task").length, 4);
 
 // Claude: reply draft -> nothing is sent until "Saada"
 click($("act-draft"));
@@ -203,7 +229,7 @@ box.checked = true;
 box.dispatchEvent(new window.Event("change", { bubbles: true }));
 await tick();
 assert.equal(sent("PATCH", "/tasks/t1")[0].body.status, "completed");
-assert.equal(document.querySelectorAll("#task-list .task").length, 2);
+assert.equal(document.querySelectorAll("#task-list .task").length, 3);
 
 // Calendar: click an empty time -> dialog -> save
 $("cal-grid").dispatchEvent(new window.MouseEvent("click", { bubbles: true, clientY: 14 * 48 + 5 }));

@@ -56,7 +56,17 @@ const CLAUDE_ERRORS = {
 };
 
 // Asks our server function for a suggestion. It returns text only.
-export async function askClaude(action, email, instructions = "") {
+export function askClaude(action, email, instructions = "") {
+  return callClaude({ action, email, instructions });
+}
+
+// Asks which of these inbox emails are worth a to-do item.
+// emails: [{ id, from, subject, received, preview }] -> [{ id, title, due_date, importance }]
+export async function askClaudeTriage(emails) {
+  return (await callClaude({ action: "triage", emails })).tasks || [];
+}
+
+async function callClaude(payload) {
   const res = await fetch("/api/claude", {
     method: "POST",
     headers: {
@@ -64,9 +74,7 @@ export async function askClaude(action, email, instructions = "") {
       "X-Taskmeil-Token": await getIdToken(),
     },
     body: JSON.stringify({
-      action,
-      email,
-      instructions,
+      ...payload,
       today: `${new Date().toLocaleDateString("en-GB", { weekday: "long" })} ${localDate(new Date())}`,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     }),

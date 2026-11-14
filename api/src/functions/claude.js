@@ -1,8 +1,11 @@
 // POST /api/claude
 // Body: { action: "task" | "reply", email: { subject, from, to, received, body },
 //         instructions?, today, timezone }
+//   or: { action: "triage", emails: [{ id, from, subject, received, preview }],
+//         today, timezone }
 // Returns { result } where result is { title, notes, due_date, importance }
-// for "task" or { body } for "reply".
+// for "task", { body } for "reply", and { tasks: [{ id, title, due_date,
+// importance }] } for "triage" (only the emails worth a to-do item).
 //
 // The Anthropic API key is read from the ANTHROPIC_API_KEY app setting and
 // never leaves this function. Nothing here can send mail: the function only
@@ -11,10 +14,11 @@
 const { app } = require("@azure/functions");
 const Anthropic = require("@anthropic-ai/sdk");
 const { verifyUser, AuthError } = require("../lib/auth");
-const { SYSTEM, ACTIONS, buildUserMessage } = require("../lib/prompts");
+const { SYSTEM, ACTIONS, buildUserMessage, buildTriageMessage } = require("../lib/prompts");
 
 const MODEL = process.env.CLAUDE_MODEL || "claude-opus-5-5";
 const MAX_EMAIL_CHARS = 120000;
+const MAX_TRIAGE_EMAILS = 40;
 
 let client;
 function getClient() {
@@ -54,30 +58,49 @@ async function handler(request, context) {
 
   const action = input?.action;
   if (!Object.hasOwn(ACTIONS, action)) {
-    return json(400, { error: 'action must be "task" or "reply".' });
+    return json(400, { error: 'action must be "task", "reply" or "triage".' });
   }
-  const body = typeof input.email?.body === "string" ? input.email.body : "";
-  if (!body.trim() && !str(input.email?.subject, 10)) {
-    return json(400, { error: "The email is empty." });
-  }
-  if (body.length > MAX_EMAIL_CHARS) {
-    return json(413, { error: "The email is too long for Claude to read here." });
-  }
+  const common = { userName: who.name, today: str(input.today, 60), timezone: str(input.timezone, 60) };
 
-  const userMessage = buildUserMessage({
-    action,
-    email: {
-      subject: str(input.email.subject, 500),
-      from: str(input.email.from, 500),
-      to: str(input.email.to, 2000),
-      received: str(input.email.received, 100),
-      body,
-    },
-    instructions: str(input.instructions, 2000).trim(),
-    userName: who.name,
-    today: str(input.today, 60),
-    timezone: str(input.timezone, 60),
-  });
+  let userMessage;
+  let triageIds;
+  if (action === "triage") {
+    const emails = Array.isArray(input.emails) ? input.emails.filter((e) => typeof e?.id === "string") : [];
+    if (!emails.length) return json(400, { error: "No emails to look through." });
+    if (emails.length > MAX_TRIAGE_EMAILS) {
+      return json(413, { error: `At most ${MAX_TRIAGE_EMAILS} emails at a time.` });
+    }
+    triageIds = emails.map((e) => e.id);
+    userMessage = buildTriageMessage({
+      ...common,
+      emails: emails.map((e) => ({
+        from: str(e.from, 300),
+        subject: str(e.subject, 300),
+        received: str(e.received, 100),
+        preview: str(e.preview, 600),
+      })),
+    });
+  } else {
+    const body = typeof input.email?.body === "string" ? input.email.body : "";
+    if (!body.trim() && !str(input.email?.subject, 10)) {
+      return json(400, { error: "The email is empty." });
+    }
+    if (body.length > MAX_EMAIL_CHARS) {
+      return json(413, { error: "The email is too long for Claude to read here." });
+    }
+    userMessage = buildUserMessage({
+      ...common,
+      action,
+      email: {
+        subject: str(input.email.subject, 500),
+        from: str(input.email.from, 500),
+        to: str(input.email.to, 2000),
+        received: str(input.email.received, 100),
+        body,
+      },
+      instructions: str(input.instructions, 2000).trim(),
+    });
+  }
 
   let response;
   try {
@@ -87,7 +110,7 @@ async function handler(request, context) {
       // If the model declines a request, the API retries it on a fallback model.
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
-      system: SYSTEM,
+      system: ACTIONS[action].system || SYSTEM,
       messages: [{ role: "user", content: userMessage }],
       output_config: {
         effort: ACTIONS[action].effort,
@@ -131,8 +154,21 @@ async function handler(request, context) {
     return json(502, { error: "Claude's answer could not be read. Try again." });
   }
 
-  if (action === "task" && !/^\d{4}-\d{2}-\d{2}$/.test(result.due_date || "")) {
-    result.due_date = null;
+  const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || "");
+  if (action === "task" && !isDate(result.due_date)) result.due_date = null;
+  if (action === "triage") {
+    // Swap the numbers Claude saw back to message ids; drop anything out of range.
+    const seen = new Set();
+    result = {
+      tasks: (Array.isArray(result.tasks) ? result.tasks : [])
+        .filter((t) => Number.isInteger(t?.n) && triageIds[t.n - 1] && !seen.has(t.n) && seen.add(t.n))
+        .map((t) => ({
+          id: triageIds[t.n - 1],
+          title: str(t.title, 255),
+          due_date: isDate(t.due_date) ? t.due_date : null,
+          importance: t.importance === "high" ? "high" : "normal",
+        })),
+    };
   }
   context.log(
     `claude ${action} for ${who.user}: in=${response.usage.input_tokens} out=${response.usage.output_tokens}`
