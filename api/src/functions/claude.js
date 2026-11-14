@@ -20,7 +20,34 @@ const { SYSTEM, ACTIONS, buildUserMessage, buildTriageMessage } = require("../li
 
 // With Bedrock the email text is processed inside AWS, in the chosen region.
 const BEDROCK = Boolean(process.env.AWS_BEARER_TOKEN_BEDROCK);
-const MODEL = process.env.CLAUDE_MODEL || (BEDROCK ? "anthropic.claude-opus-5-5" : "claude-opus-5-5");
+// Bedrock offers different models per account and region, so without an
+// explicit CLAUDE_MODEL the function takes the first of these that exists
+// there and remembers it.
+const BEDROCK_MODELS = [
+  "anthropic.claude-opus-5-5",
+  "anthropic.claude-opus-4-8",
+  "anthropic.claude-sonnet-5",
+  "anthropic.claude-haiku-4-5",
+];
+let MODEL = process.env.CLAUDE_MODEL || (BEDROCK ? BEDROCK_MODELS[0] : "claude-opus-5-5");
+
+async function createOnBedrock(params) {
+  const candidates = process.env.CLAUDE_MODEL ? [MODEL] : BEDROCK_MODELS.slice(BEDROCK_MODELS.indexOf(MODEL));
+  let lastError;
+  for (const model of candidates) {
+    try {
+      const response = await getClient().messages.create({ ...params, model });
+      MODEL = model;
+      return response;
+    } catch (err) {
+      const missing =
+        err instanceof Anthropic.NotFoundError || err instanceof Anthropic.PermissionDeniedError;
+      if (!missing) throw err;
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
 const MAX_EMAIL_CHARS = 120000;
 const MAX_TRIAGE_EMAILS = 40;
 
@@ -136,7 +163,7 @@ async function handler(request, context) {
   let response;
   try {
     response = BEDROCK
-      ? await getClient().messages.create(params)
+      ? await createOnBedrock(params)
       : // If the model declines a request, the Anthropic API retries it on a
         // fallback model. Bedrock does not offer this.
         await getClient().beta.messages.create({
