@@ -31,23 +31,61 @@ const BEDROCK_MODELS = [
 ];
 let MODEL = process.env.CLAUDE_MODEL || (BEDROCK ? BEDROCK_MODELS[0] : "claude-opus-5-5");
 
+let offered = null; // model ids the Bedrock region lists for this key, once asked
+
+// Asks the Bedrock region which models this key can use.
+async function listBedrockModels() {
+  const res = await fetch(`https://bedrock-mantle.${process.env.AWS_REGION}.api.aws/v1/models`, {
+    headers: { Authorization: `Bearer ${process.env.AWS_BEARER_TOKEN_BEDROCK}` },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new Error(`model list HTTP ${res.status}`);
+  const data = await res.json();
+  return (data.data || []).map((m) => m.id).filter((id) => typeof id === "string");
+}
+
+const isMissing = (err) =>
+  err instanceof Anthropic.NotFoundError || err instanceof Anthropic.PermissionDeniedError;
+
 async function createOnBedrock(params) {
-  const candidates = process.env.CLAUDE_MODEL ? [MODEL] : BEDROCK_MODELS.slice(BEDROCK_MODELS.indexOf(MODEL));
+  // A model set by hand or already found by asking the region is used as it is.
+  const candidates = BEDROCK_MODELS.includes(MODEL) && !process.env.CLAUDE_MODEL
+    ? BEDROCK_MODELS.slice(BEDROCK_MODELS.indexOf(MODEL))
+    : [MODEL];
   let lastError;
-  for (const model of candidates) {
+  const attempt = async (model) => {
     try {
       const response = await getClient().messages.create({ ...params, model });
       MODEL = model;
       return response;
     } catch (err) {
-      const missing =
-        err instanceof Anthropic.NotFoundError || err instanceof Anthropic.PermissionDeniedError;
-      if (!missing) throw err;
+      if (!isMissing(err)) throw err;
       lastError = err;
+      return null;
     }
+  };
+  for (const model of candidates) {
+    const response = await attempt(model);
+    if (response) return response;
+  }
+  // None of the usual names exist here: ask the region what it does offer and
+  // take its strongest Claude model (ids may carry a prefix such as "eu.").
+  try {
+    offered = await listBedrockModels();
+  } catch (err) {
+    offered = [`(${err.message})`];
+  }
+  const rank = (id) => ["haiku", "sonnet", "opus"].findIndex((tier) => id.includes(tier));
+  const claude = offered
+    .filter((id) => id.includes("claude") && !candidates.includes(id))
+    .sort((a, b) => rank(b) - rank(a) || b.localeCompare(a));
+  for (const model of claude.slice(0, 4)) {
+    const response = await attempt(model);
+    if (response) return response;
   }
   throw lastError;
 }
+
 const MAX_EMAIL_CHARS = 120000;
 const MAX_TRIAGE_EMAILS = 40;
 
@@ -71,7 +109,8 @@ function getClient() {
 // something is misconfigured. It holds no key and no email text.
 function upstreamDetail(err) {
   const message = String(err?.error?.error?.message || err?.error?.message || err?.message || "").slice(0, 300);
-  return `${BEDROCK ? "Bedrock " + process.env.AWS_REGION : "Anthropic"}, model ${MODEL}, HTTP ${err?.status}: ${message}`;
+  const list = offered ? ` Models offered here: ${offered.join(", ").slice(0, 900) || "none"}.` : "";
+  return `${BEDROCK ? "Bedrock " + process.env.AWS_REGION : "Anthropic"}, model ${MODEL}, HTTP ${err?.status}: ${message}${list}`;
 }
 
 const str = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
