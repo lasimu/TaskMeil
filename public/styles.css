@@ -146,8 +146,9 @@ button.link { border: 0; padding: 0; background: none; color: var(--brand); text
 .mail-item.will-delete { background: var(--danger); color: #fff; }
 .mail-item.will-delete .mail-preview, .mail-item.will-delete time { color: #fff; }
 .usage { margin: 0; padding: 4px 12px 6px; font-size: .78rem; color: var(--muted); border-bottom: 1px solid var(--line); cursor: help; }
-.usage { cursor: pointer; }
-.usage:hover { color: var(--ink); }
+.usage-row { display: flex; align-items: baseline; gap: 8px; padding: 4px 12px 6px; border-bottom: 1px solid var(--line); }
+.usage-row .usage { flex: 1; padding: 0; border: 0; cursor: default; }
+.usage-row .link { flex: none; font-size: .78rem; }
 .usage.over { color: var(--danger); }
 .stats { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 14px; font-size: .9rem; }
 .stats dt { color: var(--muted); }
@@ -273,6 +274,7 @@ button.link { border: 0; padding: 0; background: none; color: var(--brand); text
 
   .topbar .user, #refresh { display: none; }
   .topbar .brand { flex: 1; }
+  .topbar .btn { padding-left: 9px; padding-right: 9px; font-size: .88rem; white-space: nowrap; }
   .btn { min-height: 42px; }
   .ai-row { flex-direction: column; }
   .row { flex-wrap: wrap; }

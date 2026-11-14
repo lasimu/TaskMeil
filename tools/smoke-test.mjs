@@ -275,14 +275,14 @@ click(document.querySelector('.views button[data-view="all"]'));
 assert.equal(document.body.dataset.view, "all");
 
 // Usage dialog: the monthly limit for automatic marking can be changed
-click($("claude-usage"));
+click($("usage-open"));
 assert.equal($("usage-dialog").hasAttribute("open"), true);
 assert.equal($("usage-limit").value, "0.5", "the limit starts at 50 cents");
 assert.match($("usage-mark").textContent, /1 päringut, hinnanguliselt \$0\.015 \(limiit \$0\.50\)/);
 $("usage-limit").value = "0.01";
 submit($("usage-form"));
 assert.equal($("usage-dialog").hasAttribute("open"), false);
-assert.match($("claude-usage").textContent, /märgistamise limiit on täis/);
+assert.match($("claude-usage").textContent, /märgistamise limiit \$0\.010 kuus on täis/);
 assert.equal(localStorage.getItem("taskmeil.markLimit"), "0.01");
 
 // Sliding a mail left on a touchscreen deletes it, with undo; the mouse does not

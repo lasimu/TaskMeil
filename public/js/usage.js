@@ -81,7 +81,9 @@ export function renderUsage() {
   const stopped = month.markCost >= limit;
   el.textContent =
     `Claude sel kuul: ${num(month.calls)} päringut · ${num(month.input + month.output)} tokenit · hinnanguliselt ${usd(month.cost)}` +
-    (stopped ? (limit ? " · märgistamise limiit on täis" : " · märgistamine on välja lülitatud") : "");
+    (!limit
+      ? " · märgistamine on välja lülitatud"
+      : ` · märgistamise limiit ${usd(limit)} kuus${stopped ? " on täis" : `, kulunud ${usd(month.markCost)}`}`);
   el.classList.toggle("over", stopped);
 }
 
@@ -99,10 +101,8 @@ export function initUsage({ onLimitChange }) {
     $("usage-limit").value = markLimit();
     dialog.showModal();
   };
-  $("claude-usage").addEventListener("click", open);
-  $("claude-usage").addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") open();
-  });
+  $("usage-open").addEventListener("click", open);
+  $("usage-edit").addEventListener("click", open);
   $("usage-cancel").addEventListener("click", () => dialog.close());
   $("usage-form").addEventListener("submit", (e) => {
     e.preventDefault();
