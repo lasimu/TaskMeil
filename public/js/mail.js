@@ -12,7 +12,6 @@ const state = {
   messages: [],
   nextLink: null,
   current: null, // the message open in the reading pane
-  showImages: false,
   compose: null, // { mode: "new" | "reply" | "replyAll", source }
 };
 
@@ -218,7 +217,6 @@ function renderList() {
 async function openMessage(id) {
   const mail = await graph(`/me/messages/${id}?$select=${READ_FIELDS}`);
   state.current = mail;
-  state.showImages = alwaysShowImages();
   renderMessage();
   showTab("read");
   loadInlineImages(mail).catch((err) => console.warn("Inline images not loaded:", err.message));
@@ -230,15 +228,6 @@ async function openMessage(id) {
     graph(`/me/messages/${id}`, { method: "PATCH", body: { isRead: true } }).catch(console.error);
   }
   renderList();
-}
-
-const IMAGES_KEY = "taskmeil.showImages";
-function alwaysShowImages() {
-  try {
-    return localStorage.getItem(IMAGES_KEY) === "1";
-  } catch {
-    return false;
-  }
 }
 
 // Pictures placed inside the email text (logos, pasted screenshots) travel as
@@ -280,41 +269,16 @@ function renderMessage() {
     (to ? ` · Kellele: ${to}` : "") + (cc ? ` · Koopia: ${cc}` : "");
   $("act-outlook").href = mail.webLink || "#";
 
-  const { html, hasRemoteImages } = sanitize(mail.body, mail.inlineImages);
+  const html = sanitize(mail.body, mail.inlineImages);
   const notice = $("read-notice");
   const notes = [];
   if (mail.hasAttachments) notes.push("Kirjal on manuseid. Nende avamiseks vali „Ava Outlookis“.");
   notice.replaceChildren(...notes.map((n) => h("span", {}, n + " ")));
-  if (hasRemoteImages && !state.showImages) {
-    notice.append(
-      h("span", {}, "Pildid on privaatsuse kaitseks peidetud. "),
-      h("button", {
-        class: "link",
-        onclick: () => {
-          state.showImages = true;
-          renderMessage();
-        },
-      }, "Näita pilte"),
-      h("span", {}, " · "),
-      h("button", {
-        class: "link",
-        onclick: () => {
-          try {
-            localStorage.setItem(IMAGES_KEY, "1");
-          } catch {
-            /* remembered for this message only */
-          }
-          state.showImages = true;
-          renderMessage();
-        },
-      }, "Näita alati")
-    );
-  }
   notice.hidden = !notice.childNodes.length;
 
-  // The email is shown in a sandboxed frame: no scripts, and remote content
-  // only when the user asks for images.
-  const csp = `default-src 'none'; style-src 'unsafe-inline'; font-src data:; img-src data:${state.showImages ? " https:" : ""}`;
+  // The email is shown in a sandboxed frame: no scripts; of remote content
+  // only images are loaded.
+  const csp = "default-src 'none'; style-src 'unsafe-inline'; font-src data:; img-src data: https:";
   $("read-body").srcdoc =
     `<!doctype html><html><head><meta charset="utf-8">` +
     `<meta http-equiv="Content-Security-Policy" content="${csp}">` +
@@ -325,9 +289,9 @@ function renderMessage() {
 
 // Removes the parts of an HTML email that could run code or navigate the frame.
 function sanitize(body, inlineImages) {
-  if (!body?.content) return { html: "", hasRemoteImages: false };
+  if (!body?.content) return "";
   if (body.contentType !== "html") {
-    return { html: `<pre>${escapeHtml(body.content)}</pre>`, hasRemoteImages: false };
+    return `<pre>${escapeHtml(body.content)}</pre>`;
   }
   const doc = new DOMParser().parseFromString(body.content, "text/html");
   doc.querySelectorAll("script,meta,link,base,iframe,frame,object,embed,form,noscript").forEach((n) => n.remove());
@@ -345,10 +309,7 @@ function sanitize(body, inlineImages) {
     if (uri) img.setAttribute("src", uri);
   }
   const styles = [...doc.head.querySelectorAll("style")].map((s) => s.outerHTML).join("");
-  return {
-    html: styles + doc.body.innerHTML,
-    hasRemoteImages: !!doc.querySelector('img[src^="http"]'),
-  };
+  return styles + doc.body.innerHTML;
 }
 
 function mailForClaude(mail) {

@@ -86,6 +86,6 @@ fill it in, and run `npm start`.
 
 ## Not built yet
 
-- Attachments and inline images (use "Ava Outlookis").
+- Opening attachments (use "Ava Outlookis"). Pictures inside an email are shown.
 - Folders other than the inbox; rich-text composing.
 - Editing a task after it is created (complete it here, edit in To Do).
