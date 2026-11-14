@@ -20,8 +20,10 @@ export function initTasks() {
     const input = $("task-new");
     const title = input.value.trim();
     if (!title) return;
+    const due = $("task-new-due").value;
     input.value = "";
-    attempt("Ülesande lisamine", () => createTask({ title }));
+    $("task-new-due").value = "";
+    attempt("Ülesande lisamine", () => createTask({ title, due }));
   });
   $("task-cancel").addEventListener("click", () => $("task-dialog").close());
   $("task-form").addEventListener("submit", (e) => {
@@ -79,7 +81,10 @@ function renderTasks() {
           h("div", { class: "task-title" }, task.title),
           task.body?.content?.trim() && h("div", { class: "task-notes" }, task.body.content.trim()),
           h("div", { class: "task-tags" },
-            due && h("span", { class: `tag${due < today ? " overdue" : ""}` }, fmtDay(due)),
+            due
+              ? h("span", { class: `tag${due < today ? " overdue" : ""}`, title: "Tähtaeg" }, `Tähtaeg ${fmtDay(due)}`)
+              : task.createdDateTime &&
+                h("span", { class: "tag muted", title: "Lisamise kuupäev" }, `Lisatud ${fmtDay(new Date(task.createdDateTime))}`),
             task.importance === "high" && h("span", { class: "tag important" }, "Tähtis"),
             link && h("a", { class: "tag", href: link, target: "_blank", rel: "noopener" }, "Ava kiri")
           )

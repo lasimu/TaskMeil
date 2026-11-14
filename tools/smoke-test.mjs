@@ -140,6 +140,11 @@ assert.equal(document.querySelectorAll(".mail-item").length, 2);
 assert.equal(document.querySelectorAll(".mail-item.unread").length, 1);
 assert.equal(document.querySelectorAll("#task-list .task").length, 2);
 assert.equal(document.querySelector("#task-list .task-title").textContent, "Helista notarile", "task with a due date comes first");
+{
+  const tags = [...document.querySelectorAll("#task-list .task")].map((t) => t.querySelector(".tag").textContent);
+  assert.match(tags[0], /^Tähtaeg /, "a task with a due date shows it");
+  assert.match(tags[1], /^Lisatud /, "a task without a due date shows when it was added");
+}
 assert.equal(document.querySelectorAll("#cal-grid .event").length, 2);
 assert.equal(document.querySelectorAll("#cal-allday .allday").length, 1);
 assert.match(document.querySelectorAll("#cal-grid .event")[1].getAttribute("style"), /width: calc\(50% - 31px\)/, "overlapping events share the width");
