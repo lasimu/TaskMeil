@@ -24,6 +24,12 @@
 <div id="app" class="app" hidden>
   <header class="topbar">
     <strong class="brand">Taskmeil</strong>
+    <nav class="views" aria-label="Vaade">
+      <button type="button" data-view="all" title="Põhivaade: kirjad, ülesanded ja kalender koos">Kõik</button>
+      <button type="button" data-view="mail" title="Ainult kirjad">Kirjad</button>
+      <button type="button" data-view="tasks" title="Ainult ülesanded">Ülesanded</button>
+      <button type="button" data-view="cal" title="Ainult kalender">Kalender</button>
+    </nav>
     <span id="user-name" class="user"></span>
     <button id="new-mail" class="btn primary">Uus kiri</button>
     <button id="refresh" class="btn" title="Värskenda">Värskenda</button>

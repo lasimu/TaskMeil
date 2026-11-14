@@ -265,6 +265,15 @@ click(document.querySelector("#cal-grid .event"));
 assert.equal($("event-title").value, "Koosolek");
 assert.equal($("event-delete").hidden, false);
 
+// Single views: the main view stays the default; a chosen view is remembered
+assert.equal(document.body.dataset.view, "all");
+click(document.querySelector('.views button[data-view="cal"]'));
+assert.equal(document.body.dataset.view, "cal");
+assert.equal(document.querySelector(".views button.active").textContent, "Kalender");
+assert.equal(localStorage.getItem("taskmeil.view"), "cal");
+click(document.querySelector('.views button[data-view="all"]'));
+assert.equal(document.body.dataset.view, "all");
+
 // Usage dialog: the monthly limit for automatic marking can be changed
 click($("claude-usage"));
 assert.equal($("usage-dialog").hasAttribute("open"), true);

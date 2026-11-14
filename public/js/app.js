@@ -15,6 +15,34 @@ function showTab(name) {
   }
 }
 
+// On a wide screen the main view shows everything; the other views show one
+// thing alone. The choice is remembered in this browser.
+const VIEWS = ["all", "mail", "tasks", "cal"];
+const VIEW_KEY = "taskmeil.view";
+
+function showView(name) {
+  if (!VIEWS.includes(name)) name = "all";
+  document.body.dataset.view = name;
+  for (const button of document.querySelectorAll(".views button")) {
+    const on = button.dataset.view === name;
+    button.classList.toggle("active", on);
+    button.setAttribute("aria-pressed", String(on));
+  }
+  try {
+    localStorage.setItem(VIEW_KEY, name);
+  } catch {
+    /* not remembered */
+  }
+}
+
+function savedView() {
+  try {
+    return localStorage.getItem(VIEW_KEY);
+  } catch {
+    return null;
+  }
+}
+
 function refreshAll() {
   return Promise.all([
     attempt("Kirjade laadimine", () => loadInbox()),
@@ -53,6 +81,10 @@ async function start() {
   $("app").hidden = false;
   $("user-name").textContent = account.name || account.username;
   showTab("inbox");
+  showView(savedView());
+  for (const button of document.querySelectorAll(".views button")) {
+    button.addEventListener("click", () => showView(button.dataset.view));
+  }
 
   for (const button of document.querySelectorAll(".tabs button")) {
     button.addEventListener("click", () => showTab(button.dataset.tab));

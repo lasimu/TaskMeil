@@ -120,6 +120,22 @@ button.link { border: 0; padding: 0; background: none; color: var(--brand); text
 
 .tabs { display: none; }
 
+/* ---------- single views (wide screens) ---------- */
+.views { display: flex; gap: 2px; padding: 2px; border-radius: 8px; background: rgba(255, 255, 255, .14); }
+.views button { border: 0; border-radius: 6px; padding: 5px 12px; background: none; color: var(--brand-ink); cursor: pointer; }
+.views button:hover { background: rgba(255, 255, 255, .16); }
+.views button.active { background: var(--brand-ink); color: var(--brand); font-weight: 600; }
+@media (min-width: 761px) {
+  body[data-view="mail"] .panes { grid-template-columns: minmax(280px, 400px) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "inbox read"; }
+  body[data-view="tasks"] .panes { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "tasks"; }
+  body[data-view="cal"] .panes { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-template-areas: "cal"; }
+  body[data-view="mail"] #pane-tasks, body[data-view="mail"] #pane-cal,
+  body[data-view="tasks"] #pane-inbox, body[data-view="tasks"] #pane-read, body[data-view="tasks"] #pane-cal,
+  body[data-view="cal"] #pane-inbox, body[data-view="cal"] #pane-read, body[data-view="cal"] #pane-tasks { display: none; }
+  body[data-view="tasks"] #pane-tasks { width: min(820px, 100%); justify-self: center; }
+  body[data-view="cal"] #pane-cal { width: min(900px, 100%); justify-self: center; }
+}
+
 /* ---------- inbox ---------- */
 .mail-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
 .mail-item { padding: 10px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
@@ -237,6 +253,7 @@ button.link { border: 0; padding: 0; background: none; color: var(--brand); text
 
 /* ---------- phone: one pane at a time, tabs at the bottom ---------- */
 @media (max-width: 760px) {
+  .views { display: none; }
   .panes { display: block; padding: 0; }
   .pane { display: none; height: 100%; border: 0; border-radius: 0; }
   body[data-tab="inbox"] #pane-inbox,
