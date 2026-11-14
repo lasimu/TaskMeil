@@ -90,7 +90,9 @@ async function callClaude(payload) {
     const detail = data?.detail || (CLAUDE_ERRORS[res.status] ? "" : data?.error);
     throw new Error(detail ? `${message} (${detail})` : message);
   }
-  window.dispatchEvent(new window.CustomEvent("taskmeil:usage", { detail: data.usage }));
+  window.dispatchEvent(
+    new window.CustomEvent("taskmeil:usage", { detail: { usage: data.usage, action: payload.action } })
+  );
   return data.result;
 }
 

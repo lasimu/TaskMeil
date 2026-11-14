@@ -130,6 +130,13 @@ button.link { border: 0; padding: 0; background: none; color: var(--brand); text
 .mail-item.will-delete { background: var(--danger); color: #fff; }
 .mail-item.will-delete .mail-preview, .mail-item.will-delete time { color: #fff; }
 .usage { margin: 0; padding: 4px 12px 6px; font-size: .78rem; color: var(--muted); border-bottom: 1px solid var(--line); cursor: help; }
+.usage { cursor: pointer; }
+.usage:hover { color: var(--ink); }
+.usage.over { color: var(--danger); }
+.stats { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0 0 14px; font-size: .9rem; }
+.stats dt { color: var(--muted); }
+.stats dd { margin: 0; }
+.hint { margin: 0 0 10px; font-size: .82rem; color: var(--muted); }
 .toast-action { margin-left: 8px; padding: 2px 10px; border: 1px solid currentColor; border-radius: 99px; background: none; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
 .mail-top { display: flex; gap: 8px; align-items: baseline; }
 .mail-from { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

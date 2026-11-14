@@ -36,7 +36,7 @@
         <h2>Postkast</h2>
         <input id="mail-search" type="search" placeholder="Otsi kirju" aria-label="Otsi kirju">
       </div>
-      <p id="claude-usage" class="usage"></p>
+      <p id="claude-usage" class="usage" role="button" tabindex="0" title="Claude'i kasutus ja märgistamise limiit"></p>
       <ul id="mail-list" class="mail-list"></ul>
       <button id="mail-more" class="btn more" hidden>Laadi veel</button>
     </section>
@@ -121,6 +121,26 @@
       <button id="compose-cancel" type="button" class="btn">Loobu</button>
       <button id="compose-save" type="button" class="btn">Salvesta mustandina</button>
       <button id="compose-send" type="button" class="btn primary">Saada</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="usage-dialog" class="dialog">
+  <form id="usage-form" method="dialog">
+    <h3>Claude'i kasutus ja kulu</h3>
+    <dl class="stats">
+      <dt>Täna</dt><dd id="usage-today"></dd>
+      <dt>Sel kuul</dt><dd id="usage-month"></dd>
+      <dt>Sellest kirjade märgistamine</dt><dd id="usage-mark"></dd>
+      <dt>Mudel</dt><dd id="usage-model"></dd>
+    </dl>
+    <label>Kirjade automaatse märgistamise limiit kuus (USD)
+      <input id="usage-limit" type="number" min="0" step="0.05" inputmode="decimal" required>
+    </label>
+    <p class="hint">Kui selle kuu märgistamise kulu jõuab limiidini, lõpetab Claude kirjade märgistamise kuni järgmise kuuni. Nupud „Claude: tee ülesanne“ ja „Claude: kirjuta vastus“ töötavad edasi. 0 lülitab märgistamise välja. Kulu on hinnang selles brauseris tehtud päringute põhjal; täpne arve on AWS-is.</p>
+    <div class="dialog-actions">
+      <button id="usage-cancel" type="button" class="btn">Sulge</button>
+      <button type="submit" class="btn primary">Salvesta limiit</button>
     </div>
   </form>
 </dialog>

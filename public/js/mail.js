@@ -3,6 +3,7 @@
 import { graph, askClaude, askClaudeTriage } from "./graph.js";
 import { getAccount } from "./auth.js";
 import { $, h, toast, attempt, busy, escapeHtml, fmtShort, fmtFull, addr, who, htmlToText } from "./util.js";
+import { markingAllowed } from "./usage.js";
 import { proposeTask } from "./tasks.js";
 
 const LIST_FIELDS = "id,subject,from,receivedDateTime,isRead,bodyPreview,hasAttachments,webLink";
@@ -120,8 +121,13 @@ function setVerdict(id, value) {
   saveVerdicts();
 }
 
+// Runs the marking again, e.g. after the user raised the monthly limit.
+export function markInbox() {
+  if (!$("mail-search").value.trim()) triage();
+}
+
 async function triage() {
-  if (triageBusy || Date.now() < triagePausedUntil) return;
+  if (triageBusy || Date.now() < triagePausedUntil || !markingAllowed()) return;
   const known = loadVerdicts();
   const fresh = state.messages.filter((m) => !known.has(m.id)).slice(0, TRIAGE_BATCH);
   if (!fresh.length) return;
@@ -148,7 +154,7 @@ async function triage() {
   } finally {
     triageBusy = false;
   }
-  if (state.messages.some((m) => !known.has(m.id)) && Date.now() >= triagePausedUntil) triage();
+  if (state.messages.some((m) => !known.has(m.id)) && Date.now() >= triagePausedUntil && markingAllowed()) triage();
 }
 
 function suggestionRow(m) {
