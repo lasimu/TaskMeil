@@ -141,8 +141,9 @@ async function triage() {
     saveVerdicts();
     renderList();
   } catch (err) {
-    // Suggestions are an extra: stay quiet and try again later.
+    // Suggestions are an extra: say once why they are missing, then try again later.
     console.warn("Claude task suggestions unavailable:", err.message);
+    toast(`Claude ei saanud kirju ülesanneteks märgistada. ${err.message}`, true);
     triagePausedUntil = Date.now() + 10 * 60 * 1000;
   } finally {
     triageBusy = false;
