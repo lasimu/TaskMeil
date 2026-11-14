@@ -42,7 +42,7 @@ Entra admin center → App registrations → New registration.
 Azure portal → Create → Static Web App, plan **Free**, deployment source **Other**.
 
 - Copy the deployment token (Overview → Manage deployment token) into this repository as the
-  secret `AZURE_STATIC_WEB_APPS_API_TOKEN` (GitHub → Settings → Secrets and variables → Actions).
+  secret `AZURE_STATIC_WEB_APPS_API_TOKEN_ICY_SKY_0C0D9F10F` (GitHub → Settings → Secrets and variables → Actions).
 - In the Static Web App → Environment variables, add:
 
 | Name | Value |
