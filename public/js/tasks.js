@@ -1,7 +1,7 @@
 // Tasks pane: Microsoft To Do lists and tasks.
 
 import { graph } from "./graph.js";
-import { $, h, toast, attempt, fmtDay, startOfDay, fromGraphUtc, toGraphUtc, who } from "./util.js";
+import { $, h, toast, attempt, fmtDay, startOfDay, fromGraphUtc, toGraphUtc } from "./util.js";
 
 const state = {
   lists: [],
@@ -106,7 +106,7 @@ async function completeTask(task) {
   toast("Ülesanne tehtud.");
 }
 
-async function createTask({ title, notes, due, importance, mail, quiet = false }) {
+async function createTask({ title, notes, due, importance, mail }) {
   if (!state.listId) throw new Error("Microsoft To Do nimekirja ei leitud.");
   const body = { title, importance: importance || "normal" };
   if (notes) body.body = { content: notes, contentType: "text" };
@@ -125,19 +125,7 @@ async function createTask({ title, notes, due, importance, mail, quiet = false }
   if (body.linkedResources && !created.linkedResources) created.linkedResources = body.linkedResources;
   state.tasks.push(created);
   renderTasks();
-  if (!quiet) toast("Ülesanne lisatud.");
-}
-
-// Adds a task Claude picked from the inbox, in the list that is selected now.
-export function addTaskFromMail(pick, mail) {
-  return createTask({
-    title: pick.title,
-    notes: `Kiri: ${who(mail.from)} – ${mail.subject || "(teemata)"}`,
-    due: pick.due_date || "",
-    importance: pick.importance,
-    mail,
-    quiet: true,
-  });
+  toast("Ülesanne lisatud.");
 }
 
 // Shows Claude's suggestion for the user to edit. It is saved only on "Lisa ülesanne".
