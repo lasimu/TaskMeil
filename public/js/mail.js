@@ -218,9 +218,10 @@ function renderList() {
 async function openMessage(id) {
   const mail = await graph(`/me/messages/${id}?$select=${READ_FIELDS}`);
   state.current = mail;
-  state.showImages = false;
+  state.showImages = alwaysShowImages();
   renderMessage();
   showTab("read");
+  loadInlineImages(mail).catch((err) => console.warn("Inline images not loaded:", err.message));
 
   if (!mail.isRead) {
     mail.isRead = true;
@@ -229,6 +230,40 @@ async function openMessage(id) {
     graph(`/me/messages/${id}`, { method: "PATCH", body: { isRead: true } }).catch(console.error);
   }
   renderList();
+}
+
+const IMAGES_KEY = "taskmeil.showImages";
+function alwaysShowImages() {
+  try {
+    return localStorage.getItem(IMAGES_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+// Pictures placed inside the email text (logos, pasted screenshots) travel as
+// attachments and are referenced as cid:...; fetch them and show them in place.
+const MAX_INLINE_IMAGES = 20;
+const MAX_INLINE_BYTES = 5 * 1024 * 1024;
+const cidKey = (v) => String(v || "").trim().replace(/^cid:/i, "").replace(/^<|>$/g, "").toLowerCase();
+
+async function loadInlineImages(mail) {
+  if (mail.body?.contentType !== "html" || !/cid:/i.test(mail.body.content || "")) return;
+  const base = `/me/messages/${mail.id}/attachments`;
+  const list = await graph(`${base}?$select=id,name,contentType,size,isInline`);
+  const images = list.value
+    .filter((a) => (a.contentType || "").startsWith("image/") && a.size <= MAX_INLINE_BYTES)
+    .slice(0, MAX_INLINE_IMAGES);
+  if (!images.length) return;
+  const full = await Promise.all(images.map((a) => graph(`${base}/${a.id}`).catch(() => null)));
+  mail.inlineImages = new Map();
+  for (const a of full) {
+    if (!a?.contentBytes) continue;
+    const uri = `data:${a.contentType};base64,${a.contentBytes}`;
+    if (a.contentId) mail.inlineImages.set(cidKey(a.contentId), uri);
+    if (a.name) mail.inlineImages.set(cidKey(a.name), uri);
+  }
+  if (state.current === mail) renderMessage();
 }
 
 function renderMessage() {
@@ -245,7 +280,7 @@ function renderMessage() {
     (to ? ` · Kellele: ${to}` : "") + (cc ? ` · Koopia: ${cc}` : "");
   $("act-outlook").href = mail.webLink || "#";
 
-  const { html, hasRemoteImages } = sanitize(mail.body);
+  const { html, hasRemoteImages } = sanitize(mail.body, mail.inlineImages);
   const notice = $("read-notice");
   const notes = [];
   if (mail.hasAttachments) notes.push("Kirjal on manuseid. Nende avamiseks vali „Ava Outlookis“.");
@@ -259,7 +294,20 @@ function renderMessage() {
           state.showImages = true;
           renderMessage();
         },
-      }, "Näita pilte")
+      }, "Näita pilte"),
+      h("span", {}, " · "),
+      h("button", {
+        class: "link",
+        onclick: () => {
+          try {
+            localStorage.setItem(IMAGES_KEY, "1");
+          } catch {
+            /* remembered for this message only */
+          }
+          state.showImages = true;
+          renderMessage();
+        },
+      }, "Näita alati")
     );
   }
   notice.hidden = !notice.childNodes.length;
@@ -276,7 +324,7 @@ function renderMessage() {
 }
 
 // Removes the parts of an HTML email that could run code or navigate the frame.
-function sanitize(body) {
+function sanitize(body, inlineImages) {
   if (!body?.content) return { html: "", hasRemoteImages: false };
   if (body.contentType !== "html") {
     return { html: `<pre>${escapeHtml(body.content)}</pre>`, hasRemoteImages: false };
@@ -288,6 +336,13 @@ function sanitize(body) {
       const value = attr.value.trim().toLowerCase();
       if (attr.name.startsWith("on") || value.startsWith("javascript:")) el.removeAttribute(attr.name);
     }
+  }
+  for (const img of doc.querySelectorAll("img[src]")) {
+    const src = img.getAttribute("src");
+    if (!/^cid:/i.test(src)) continue;
+    // Match on the content id, or on the file name before "@" as some senders write it.
+    const uri = inlineImages?.get(cidKey(src)) || inlineImages?.get(cidKey(src).split("@")[0]);
+    if (uri) img.setAttribute("src", uri);
   }
   const styles = [...doc.head.querySelectorAll("style")].map((s) => s.outerHTML).join("");
   return {

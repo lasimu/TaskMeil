@@ -64,7 +64,7 @@ const mails = [
       contentType: "html",
       content: `<html><head><meta http-equiv="refresh" content="0;url=https://evil.example"><style>p{color:red}</style></head>
         <body onload="alert(1)"><p>Tere,</p><p>palun saatke pakkumine <b>reedeks</b>.</p>
-        <script>alert(2)</script><img src="https://tracker.example/p.gif"><a href="javascript:alert(3)">x</a></body></html>`,
+        <script>alert(2)</script><img src="https://tracker.example/p.gif"><img src="cid:logo.png@01DB"><a href="javascript:alert(3)">x</a></body></html>`,
     },
   },
   {
@@ -105,6 +105,15 @@ globalThis.fetch = window.fetch = async (url, options = {}) => {
   if (p === "/me/mailFolders/inbox/messages") return json({ value: mails });
   if (p === "/me/messages/m1" && method === "GET") return json(mails[0]);
   if (p === "/me/messages/m1" && method === "PATCH") return json({});
+  if (p === "/me/messages/m1/attachments") {
+    return json({ value: [
+      { id: "a1", name: "logo.png", contentType: "image/png", size: 120, isInline: true },
+      { id: "a2", name: "leping.pdf", contentType: "application/pdf", size: 5000, isInline: false },
+    ] });
+  }
+  if (p === "/me/messages/m1/attachments/a1") {
+    return json({ id: "a1", name: "logo.png", contentType: "image/png", contentId: "<logo.png@01DB>", contentBytes: "iVBORw0KGgo=" });
+  }
   if (p === "/me/messages/m1/createReply") {
     return json({ id: "d1", body: { contentType: "html", content: "<html><body><div>QUOTED</div></body></html>" } }, 201);
   }
@@ -185,6 +194,8 @@ assert.doesNotMatch(srcdoc, /<script|onload|javascript:|http-equiv="refresh"/i, 
 assert.match(srcdoc, /img-src data:"/, "remote images are blocked by default");
 assert.match(srcdoc, /palun saatke pakkumine/);
 assert.match($("read-notice").textContent, /Näita pilte/);
+assert.match($("read-body").srcdoc, /src="data:image\/png;base64,iVBORw0KGgo="/, "pictures inside the email are shown");
+assert.doesNotMatch($("read-body").srcdoc, /cid:/);
 assert.equal(sent("PATCH", "/me/messages/m1")[0].body.isRead, true);
 assert.equal(document.querySelectorAll(".mail-item.unread").length, 0);
 
