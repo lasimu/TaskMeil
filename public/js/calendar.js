@@ -1,5 +1,6 @@
-// Calendar pane: one day as an hour grid. Click an empty time to add an
-// event, click an event to change or delete it.
+// Calendar pane: a day or a week as an hour grid, or a month as a grid of
+// days. Click an empty time to add an event, click an event to change or
+// delete it, click a day in the month to open that day.
 
 import { graph, localDate } from "./graph.js";
 import { $, h, toast, attempt, fmtTime, fmtDayTitle, startOfDay, sameDay, fromGraphUtc, toGraphUtc } from "./util.js";
@@ -7,25 +8,66 @@ import { $, h, toast, attempt, fmtTime, fmtDayTitle, startOfDay, sameDay, fromGr
 const HOUR_PX = 48;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FIELDS = "id,subject,start,end,isAllDay,location,webLink,showAs,isCancelled";
+const MODES = ["day", "week", "month"];
+const MODE_KEY = "taskmeil.calMode";
+const WEEKDAYS = ["E", "T", "K", "N", "R", "L", "P"];
+
+function savedMode() {
+  try {
+    const mode = localStorage.getItem(MODE_KEY);
+    return MODES.includes(mode) ? mode : "day";
+  } catch {
+    return "day";
+  }
+}
 
 const state = {
-  day: startOfDay(new Date()),
+  day: startOfDay(new Date()), // the day shown, or a day inside the week or month shown
+  mode: savedMode(),
   events: [],
   editing: null, // event being edited, or null for a new one
 };
+let loadSeq = 0;
+
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const weekStart = (d) => addDays(d, -((d.getDay() + 6) % 7)); // weeks start on Monday
+const overlaps = (ev, from, to) => ev.from < to && ev.to > from;
+
+// The days on screen: [first day, day after the last].
+function visibleRange() {
+  const d = state.day;
+  if (state.mode === "day") return [d, addDays(d, 1)];
+  if (state.mode === "week") return [weekStart(d), addDays(weekStart(d), 7)];
+  const first = weekStart(new Date(d.getFullYear(), d.getMonth(), 1));
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return [first, addDays(weekStart(last), 7)];
+}
+
+function visibleDays() {
+  const [from, to] = visibleRange();
+  const days = [];
+  for (let d = from; d < to; d = addDays(d, 1)) days.push(d);
+  return days;
+}
 
 export function initCalendar() {
-  $("cal-prev").addEventListener("click", () => moveDay(-1));
-  $("cal-next").addEventListener("click", () => moveDay(1));
+  $("cal-prev").addEventListener("click", () => move(-1));
+  $("cal-next").addEventListener("click", () => move(1));
   $("cal-today").addEventListener("click", () => {
     state.day = startOfDay(new Date());
     attempt("Kalendri laadimine", loadCalendar);
   });
+  for (const button of document.querySelectorAll("#cal-modes button")) {
+    button.addEventListener("click", () => setMode(button.dataset.mode));
+  }
   $("cal-grid").addEventListener("click", (e) => {
     if (e.target.closest(".event")) return;
-    const y = e.clientY - $("cal-grid").getBoundingClientRect().top;
-    const minutes = Math.max(0, Math.min(23.5 * 60, Math.floor(y / HOUR_PX * 2) * 30));
-    openEventDialog(null, new Date(state.day.getTime() + minutes * 60000));
+    const days = visibleDays();
+    const box = $("cal-grid").getBoundingClientRect();
+    const minutes = Math.max(0, Math.min(23.5 * 60, Math.floor((e.clientY - box.top) / HOUR_PX * 2) * 30));
+    const column = Math.floor((e.clientX - box.left - 52) / ((box.width - 58) / days.length));
+    const day = days[Math.max(0, Math.min(days.length - 1, column || 0))];
+    openEventDialog(null, new Date(day.getTime() + minutes * 60000));
   });
   $("event-cancel").addEventListener("click", () => $("event-dialog").close());
   $("event-form").addEventListener("submit", (e) => {
@@ -35,38 +77,116 @@ export function initCalendar() {
   $("event-delete").addEventListener("click", () => attempt("Sündmuse kustutamine", deleteEvent));
 }
 
-function moveDay(step) {
-  const d = state.day;
-  state.day = new Date(d.getFullYear(), d.getMonth(), d.getDate() + step);
+function setMode(mode, day = state.day) {
+  state.mode = MODES.includes(mode) ? mode : "day";
+  state.day = day;
+  try {
+    localStorage.setItem(MODE_KEY, state.mode);
+  } catch {
+    /* not remembered */
+  }
+  delete $("cal-grid").dataset.scrolled;
   attempt("Kalendri laadimine", loadCalendar);
 }
 
+// One step back or forward: a day, a week or a month.
+function move(step) {
+  const d = state.day;
+  state.day =
+    state.mode === "month" ? new Date(d.getFullYear(), d.getMonth() + step, 1)
+    : addDays(d, step * (state.mode === "week" ? 7 : 1));
+  attempt("Kalendri laadimine", loadCalendar);
+}
+
+// All-day events come as plain dates (midnight to midnight); read them as
+// local days, whatever the time zone.
+function allDayDate(value) {
+  const [y, m, d] = value.dateTime.slice(0, 10).split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 export async function loadCalendar() {
-  const day = state.day;
-  const end = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1);
-  const data = await graph(
-    `/me/calendarView?startDateTime=${day.toISOString()}&endDateTime=${end.toISOString()}` +
-    `&$select=${FIELDS}&$orderby=start/dateTime&$top=100`
-  );
-  if (day !== state.day) return; // the user moved to another day meanwhile
-  state.events = data.value
+  const seq = ++loadSeq;
+  const [from, to] = visibleRange();
+  let url =
+    `/me/calendarView?startDateTime=${from.toISOString()}&endDateTime=${to.toISOString()}` +
+    `&$select=${FIELDS}&$orderby=start/dateTime&$top=100`;
+  const found = [];
+  for (let page = 0; url && page < 10; page++) {
+    const data = await graph(url);
+    if (seq !== loadSeq) return; // the user moved on meanwhile
+    found.push(...data.value);
+    url = data["@odata.nextLink"] || null;
+  }
+  state.events = found
     .filter((ev) => !ev.isCancelled)
-    .map((ev) => ({ ...ev, from: fromGraphUtc(ev.start), to: fromGraphUtc(ev.end) }));
+    .map((ev) => ev.isAllDay
+      ? { ...ev, from: allDayDate(ev.start), to: allDayDate(ev.end) }
+      : { ...ev, from: fromGraphUtc(ev.start), to: fromGraphUtc(ev.end) })
+    .filter((ev) => overlaps(ev, from, to));
   render();
 }
 
-function render() {
-  const day = state.day;
-  const isToday = sameDay(day, new Date());
-  $("cal-title").textContent = isToday ? `Täna, ${fmtDayTitle(day)}` : fmtDayTitle(day);
+const monthFmt = new Intl.DateTimeFormat("et-EE", { month: "long", year: "numeric" });
+const shortFmt = new Intl.DateTimeFormat("et-EE", { day: "numeric", month: "short" });
 
-  const allDay = state.events.filter((ev) => ev.isAllDay);
-  $("cal-allday").replaceChildren(
-    ...allDay.map((ev) =>
-      h("a", { class: "allday", href: ev.webLink, target: "_blank", rel: "noopener", title: "Ava Outlookis" },
-        ev.subject || "(pealkirjata)")
-    )
-  );
+function title() {
+  const day = state.day;
+  if (state.mode === "month") return monthFmt.format(day);
+  if (state.mode === "week") {
+    const [from, to] = visibleRange();
+    return `${shortFmt.format(from)} – ${shortFmt.format(addDays(to, -1))} ${addDays(to, -1).getFullYear()}`;
+  }
+  return sameDay(day, new Date()) ? `Täna, ${fmtDayTitle(day)}` : fmtDayTitle(day);
+}
+
+const allDayChip = (ev) =>
+  h("a", { class: "allday", href: ev.webLink, target: "_blank", rel: "noopener", title: "Ava Outlookis" },
+    ev.subject || "(pealkirjata)");
+
+function render() {
+  $("cal-title").textContent = title();
+  for (const button of document.querySelectorAll("#cal-modes button")) {
+    const on = button.dataset.mode === state.mode;
+    button.classList.toggle("active", on);
+    button.setAttribute("aria-pressed", String(on));
+  }
+  const step = { day: "päev", week: "nädal", month: "kuu" }[state.mode];
+  $("cal-prev").setAttribute("aria-label", `Eelmine ${step}`);
+  $("cal-next").setAttribute("aria-label", `Järgmine ${step}`);
+
+  const month = state.mode === "month";
+  $("cal-month").hidden = !month;
+  $("cal-scroll").hidden = month;
+  $("cal-allday").hidden = state.mode !== "day";
+  $("cal-days").hidden = state.mode !== "week";
+  if (month) renderMonth();
+  else renderHours();
+}
+
+// Day and week: an hour grid with one column per day.
+function renderHours() {
+  const days = visibleDays();
+  const n = days.length;
+  const today = new Date();
+
+  if (n === 1) {
+    $("cal-allday").replaceChildren(...state.events.filter((ev) => ev.isAllDay).map(allDayChip));
+  } else {
+    $("cal-days").replaceChildren(
+      ...days.map((day, i) =>
+        h("div", { class: `cal-day${sameDay(day, today) ? " today" : ""}` },
+          h("button", {
+            class: "cal-day-name",
+            type: "button",
+            title: "Ava päev",
+            onclick: () => setMode("day", day),
+          }, `${WEEKDAYS[i]} ${day.getDate()}`),
+          ...state.events.filter((ev) => ev.isAllDay && overlaps(ev, day, addDays(day, 1))).map(allDayChip)
+        )
+      )
+    );
+  }
 
   const grid = $("cal-grid");
   grid.style.height = `${24 * HOUR_PX}px`;
@@ -75,55 +195,107 @@ function render() {
     nodes.push(h("div", { class: "hour", style: `top:${hour * HOUR_PX}px` },
       h("span", {}, `${String(hour).padStart(2, "0")}:00`)));
   }
+  for (let i = 1; i < n; i++) {
+    nodes.push(h("div", { class: "day-line", style: `left:calc(52px + (100% - 58px) * ${i / n})` }));
+  }
 
-  // Events that overlap share the width side by side.
-  const timed = state.events.filter((ev) => !ev.isAllDay).sort((a, b) => a.from - b.from || b.to - a.to);
-  let group = [], groupEnd = 0;
-  const flush = () => {
-    const columns = [];
-    for (const ev of group) {
-      let col = columns.findIndex((end) => end <= ev.from);
-      if (col === -1) col = columns.push(0) - 1;
-      columns[col] = ev.to;
-      ev.col = col;
+  days.forEach((day, dayIndex) => {
+    const dayEnd = addDays(day, 1);
+    // The part of each event that falls on this day.
+    const items = state.events
+      .filter((ev) => !ev.isAllDay && overlaps(ev, day, dayEnd))
+      .map((ev) => ({ ev, from: ev.from < day ? day : ev.from, to: ev.to > dayEnd ? dayEnd : ev.to }))
+      .sort((a, b) => a.from - b.from || b.to - a.to);
+
+    // Events that overlap share the width side by side.
+    let group = [], groupEnd = 0;
+    const flush = () => {
+      const columns = [];
+      for (const item of group) {
+        let col = columns.findIndex((end) => end <= item.from);
+        if (col === -1) col = columns.push(0) - 1;
+        columns[col] = item.to;
+        item.col = col;
+      }
+      for (const item of group) item.cols = columns.length;
+      group = [];
+    };
+    for (const item of items) {
+      if (group.length && item.from >= groupEnd) flush();
+      group.push(item);
+      groupEnd = Math.max(groupEnd, item.to.getTime());
     }
-    for (const ev of group) ev.cols = columns.length;
-    group = [];
-  };
-  for (const ev of timed) {
-    if (group.length && ev.from >= groupEnd) flush();
-    group.push(ev);
-    groupEnd = Math.max(groupEnd, ev.to.getTime());
-  }
-  flush();
+    flush();
 
-  for (const ev of timed) {
-    const startMin = Math.max(0, (ev.from - day) / 60000);
-    const endMin = Math.min(24 * 60, (ev.to - day) / 60000);
-    const height = Math.max(22, (endMin - startMin) / 60 * HOUR_PX - 2);
-    nodes.push(h("button", {
-      class: `event${ev.showAs === "tentative" ? " tentative" : ""}`,
-      style: `top:${startMin / 60 * HOUR_PX}px;height:${height}px;` +
-        `left:calc(52px + (100% - 58px) * ${ev.col / ev.cols});width:calc((100% - 58px) / ${ev.cols} - 2px)`,
-      onclick: () => openEventDialog(ev),
-    },
-      h("strong", {}, ev.subject || "(pealkirjata)"),
-      h("span", {}, ` ${fmtTime(ev.from)}–${fmtTime(ev.to)}`),
-      ev.location?.displayName && h("span", {}, ` · ${ev.location.displayName}`)
-    ));
-  }
+    for (const { ev, from, to, col, cols } of items) {
+      const startMin = (from - day) / 60000;
+      const endMin = (to - day) / 60000;
+      const height = Math.max(22, (endMin - startMin) / 60 * HOUR_PX - 2);
+      nodes.push(h("button", {
+        class: `event${ev.showAs === "tentative" ? " tentative" : ""}`,
+        title: `${ev.subject || "(pealkirjata)"} ${fmtTime(ev.from)}–${fmtTime(ev.to)}`,
+        style: `top:${startMin / 60 * HOUR_PX}px;height:${height}px;` +
+          `left:calc(52px + (100% - 58px) * ${(dayIndex + col / cols) / n});width:calc((100% - 58px) / ${cols * n} - 2px)`,
+        onclick: () => openEventDialog(ev),
+      },
+        h("strong", {}, ev.subject || "(pealkirjata)"),
+        h("span", {}, ` ${fmtTime(ev.from)}–${fmtTime(ev.to)}`),
+        ev.location?.displayName && h("span", {}, ` · ${ev.location.displayName}`)
+      ));
+    }
 
-  if (isToday) {
-    const now = new Date();
-    nodes.push(h("div", { class: "now", style: `top:${(now - day) / 3600000 * HOUR_PX}px` }));
-  }
+    if (sameDay(day, today)) {
+      const top = (today - day) / 3600000 * HOUR_PX;
+      nodes.push(h("div", {
+        class: "now",
+        style: n === 1 ? `top:${top}px` : `top:${top}px;left:calc(52px + (100% - 58px) * ${dayIndex / n});width:calc((100% - 58px) / ${n})`,
+      }));
+    }
+  });
   grid.replaceChildren(...nodes);
 
   if (!grid.dataset.scrolled) {
-    const from = isToday ? Math.max(0, new Date().getHours() - 1) : 7;
-    $("cal-scroll").scrollTop = from * HOUR_PX;
+    const showsToday = days.some((day) => sameDay(day, today));
+    $("cal-scroll").scrollTop = (showsToday ? Math.max(0, today.getHours() - 1) : 7) * HOUR_PX;
     grid.dataset.scrolled = "1";
   }
+}
+
+// Month: a grid of days with the first few events of each.
+const MONTH_CHIPS = 3;
+
+function renderMonth() {
+  const today = new Date();
+  const cells = visibleDays().map((day) => {
+    const events = state.events
+      .filter((ev) => overlaps(ev, day, addDays(day, 1)))
+      .sort((a, b) => Number(b.isAllDay) - Number(a.isAllDay) || a.from - b.from);
+    const openDay = () => setMode("day", day);
+    return h("div", {
+      class: `mcell${day.getMonth() === state.day.getMonth() ? "" : " other"}${sameDay(day, today) ? " today" : ""}`,
+      title: "Ava päev",
+      onclick: openDay,
+    },
+      h("button", { class: "mday", type: "button", "aria-label": fmtDayTitle(day), onclick: openDay }, String(day.getDate())),
+      ...events.slice(0, MONTH_CHIPS).map((ev) =>
+        h("button", {
+          class: `mchip${ev.isAllDay ? " full" : ""}`,
+          type: "button",
+          title: ev.subject || "(pealkirjata)",
+          onclick: (e) => {
+            e.stopPropagation();
+            if (ev.isAllDay && ev.webLink) window.open(ev.webLink, "_blank", "noopener");
+            else openEventDialog(ev);
+          },
+        }, `${ev.isAllDay ? "" : fmtTime(ev.from) + " "}${ev.subject || "(pealkirjata)"}`)
+      ),
+      events.length > MONTH_CHIPS && h("span", { class: "mmore" }, `+${events.length - MONTH_CHIPS} veel`)
+    );
+  });
+  $("cal-month").replaceChildren(
+    ...WEEKDAYS.map((name) => h("div", { class: "mhead" }, name)),
+    ...cells
+  );
 }
 
 const hhmm = (d) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;

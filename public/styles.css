@@ -204,6 +204,28 @@ button.link { border: 0; padding: 0; background: none; color: var(--brand); text
 .cal-allday:empty { display: none; }
 .allday { padding: 3px 8px; border-radius: 6px; background: var(--soft); color: var(--ink); text-decoration: none; font-size: .87rem; }
 .cal-scroll { flex: 1; overflow-y: auto; min-height: 0; }
+[hidden] { display: none !important; }
+.cal-modes { display: flex; gap: 2px; margin: 6px 8px; padding: 2px; border-radius: 8px; background: var(--soft); }
+.cal-modes button { flex: 1; border: 0; border-radius: 6px; padding: 4px 8px; background: none; color: var(--ink); cursor: pointer; }
+.cal-modes button.active { background: var(--brand); color: var(--brand-ink); font-weight: 600; }
+.cal-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); padding: 0 6px 4px 52px; border-bottom: 1px solid var(--line); }
+.cal-day { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0 1px; }
+.cal-day-name { border: 0; background: none; color: var(--muted); font: inherit; font-size: .8rem; padding: 2px 0; cursor: pointer; }
+.cal-day.today .cal-day-name { color: var(--brand); font-weight: 700; }
+.cal-day .allday { padding: 1px 4px; font-size: .75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.day-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); pointer-events: none; }
+.cal-month { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); grid-auto-rows: minmax(84px, 1fr); border-top: 1px solid var(--line); }
+.cal-month .mhead { grid-row: auto; align-self: start; padding: 4px 6px; font-size: .78rem; color: var(--muted); text-align: center; border-bottom: 1px solid var(--line); }
+.cal-month { grid-template-rows: auto; }
+.mcell { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 3px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); cursor: pointer; overflow: hidden; }
+.mcell:nth-child(7n) { border-right: 0; }
+.mcell:hover { background: var(--soft); }
+.mcell.other { opacity: .5; }
+.mday { align-self: flex-start; border: 0; background: none; color: var(--ink); font: inherit; font-size: .82rem; padding: 0 5px; border-radius: 99px; cursor: pointer; }
+.mcell.today .mday { background: var(--brand); color: var(--brand-ink); font-weight: 700; }
+.mchip { border: 0; border-left: 3px solid var(--brand); border-radius: 4px; padding: 1px 4px; background: var(--soft); color: var(--ink); font: inherit; font-size: .74rem; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; flex: none; }
+.mchip.full { border-left: 0; background: var(--brand); color: var(--brand-ink); }
+.mmore { font-size: .72rem; color: var(--muted); padding-left: 4px; }
 .cal-grid { position: relative; cursor: copy; }
 .hour { position: absolute; left: 0; right: 0; height: 48px; border-top: 1px solid var(--line); pointer-events: none; }
 .hour span { position: absolute; top: 2px; left: 6px; font-size: .75rem; color: var(--muted); }

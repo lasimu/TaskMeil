@@ -51,6 +51,8 @@ window.msal = {
 const today = new Date();
 const at = (h, m = 0) => new Date(today.getFullYear(), today.getMonth(), today.getDate(), h, m);
 const utc = (d) => ({ dateTime: d.toISOString().replace("Z", "0000"), timeZone: "UTC" });
+const pad = (n) => String(n).padStart(2, "0");
+const allDay = (d) => ({ dateTime: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T00:00:00.0000000`, timeZone: "UTC" });
 const person = (name, address) => ({ emailAddress: { name, address } });
 
 const mails = [
@@ -84,7 +86,7 @@ globalThis.fetch = window.fetch = async (url, options = {}) => {
   const method = options.method || "GET";
   const u = new URL(url, "https://taskmeil.example");
   const body = options.body ? JSON.parse(options.body) : undefined;
-  calls.push({ method, path: u.pathname, body, headers: options.headers || {} });
+  calls.push({ method, path: u.pathname, query: u.searchParams, body, headers: options.headers || {} });
   const p = u.pathname.replace("/v1.0", "");
 
   if (u.pathname === "/api/claude") {
@@ -137,7 +139,7 @@ globalThis.fetch = window.fetch = async (url, options = {}) => {
     return json({ value: [
       { id: "e1", subject: "Koosolek", start: utc(at(10)), end: utc(at(11)), isAllDay: false, location: { displayName: "Kontor" } },
       { id: "e2", subject: "Kattuv", start: utc(at(10, 30)), end: utc(at(11, 30)), isAllDay: false },
-      { id: "e3", subject: "Sünnipäev", start: utc(at(0)), end: utc(at(24)), isAllDay: true, webLink: "https://outlook.office.com/e3" },
+      { id: "e3", subject: "Sünnipäev", start: allDay(at(0)), end: allDay(at(24)), isAllDay: true, webLink: "https://outlook.office.com/e3" },
     ] });
   }
   if (p === "/me/events" && method === "POST") return json({ id: "e4" }, 201);
@@ -264,6 +266,33 @@ assert.equal(ev.start.timeZone, "UTC");
 click(document.querySelector("#cal-grid .event"));
 assert.equal($("event-title").value, "Koosolek");
 assert.equal($("event-delete").hidden, false);
+click($("event-cancel"));
+
+// Week and month views
+const calRange = () => {
+  const q = calls.filter((c) => c.path.endsWith("/me/calendarView")).at(-1).query;
+  return (new Date(q.get("endDateTime")) - new Date(q.get("startDateTime"))) / 86400000;
+};
+click(document.querySelector('#cal-modes button[data-mode="week"]'));
+await tick();
+assert.equal(Math.round(calRange()), 7, "the week view asks for seven days");
+assert.equal(document.querySelectorAll("#cal-days .cal-day").length, 7);
+assert.equal(document.querySelectorAll("#cal-days .cal-day.today").length, 1);
+assert.equal(document.querySelectorAll("#cal-days .allday").length, 1, "the all-day event sits on its own day");
+assert.equal(document.querySelectorAll("#cal-grid .event").length, 2);
+assert.match(document.querySelector("#cal-grid .event").getAttribute("style"), /width: calc\(7\.14\d*% /, "a week column is a seventh, shared by two");
+click(document.querySelector('#cal-modes button[data-mode="month"]'));
+await tick();
+assert.ok(calRange() >= 28 && calRange() <= 42, "the month view asks for whole weeks");
+assert.equal($("cal-month").hidden, false);
+assert.equal($("cal-scroll").hidden, true);
+assert.equal(document.querySelectorAll("#cal-month .mcell").length % 7, 0);
+assert.equal(document.querySelectorAll("#cal-month .mcell.today .mchip").length, 3);
+assert.equal(localStorage.getItem("taskmeil.calMode"), "month");
+click(document.querySelector("#cal-month .mcell.today"));
+await tick();
+assert.equal(document.querySelector("#cal-modes button.active").textContent, "Päev", "clicking a day opens it");
+assert.equal(document.querySelectorAll("#cal-grid .event").length, 2);
 
 // Single views: the main view stays the default; a chosen view is remembered
 assert.equal(document.body.dataset.view, "all");

@@ -94,7 +94,14 @@
           <button id="cal-next" class="btn" aria-label="Järgmine päev">›</button>
         </div>
       </div>
+      <div id="cal-modes" class="cal-modes" role="group" aria-label="Kalendri vaade">
+        <button type="button" data-mode="day">Päev</button>
+        <button type="button" data-mode="week">Nädal</button>
+        <button type="button" data-mode="month">Kuu</button>
+      </div>
       <div id="cal-allday" class="cal-allday"></div>
+      <div id="cal-days" class="cal-days" hidden></div>
+      <div id="cal-month" class="cal-month" hidden></div>
       <div id="cal-scroll" class="cal-scroll">
         <div id="cal-grid" class="cal-grid" title="Klõpsa, et lisada sündmus"></div>
       </div>
