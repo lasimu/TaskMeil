@@ -187,7 +187,7 @@ await tick();
   assert.equal(added.length, 1);
   assert.equal(added[0].body.linkedResources[0].webUrl, "https://outlook.office.com/mail/m1");
   assert.equal(document.querySelectorAll(".mail-suggest").length, 0, "the mark goes away once the task is added");
-  assert.match($("claude-usage").textContent, /1 päringut · 1[\s\u00a0]?500 tokenit · hinnanguliselt \$0\.015/);
+  assert.match($("claude-usage").textContent, /1 päringut · 1[\s\u00a0]?500 tokenit · kokku hinnanguliselt 0,01 € · märgistamine 0,01 € \/ 0,50 € kuus/);
   calls.splice(calls.indexOf(added[0]), 1); // keep the later checks counting from zero
 }
 assert.equal(document.querySelectorAll("#task-list .task").length, 3);
@@ -307,11 +307,11 @@ assert.equal(document.body.dataset.view, "all");
 click($("usage-open"));
 assert.equal($("usage-dialog").hasAttribute("open"), true);
 assert.equal($("usage-limit").value, "0.5", "the limit starts at 50 cents");
-assert.match($("usage-mark").textContent, /1 päringut, hinnanguliselt \$0\.015 \(limiit \$0\.50\)/);
+assert.match($("usage-mark").textContent, /1 päringut, hinnanguliselt 0,01 € \/ 0,50 € kuus/);
 $("usage-limit").value = "0.01";
 submit($("usage-form"));
 assert.equal($("usage-dialog").hasAttribute("open"), false);
-assert.match($("claude-usage").textContent, /märgistamise limiit \$0\.010 kuus on täis/);
+assert.match($("claude-usage").textContent, /märgistamine 0,01 € \/ 0,01 € kuus \(limiit täis\)/);
 assert.equal(localStorage.getItem("taskmeil.markLimit"), "0.01");
 
 // Sliding a mail left on a touchscreen deletes it, with undo; the mouse does not
