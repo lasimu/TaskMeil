@@ -157,14 +157,92 @@ async function mailToTasks() {
   );
 }
 
+// On a touchscreen, sliding a mail to the left moves it to "Kustutatud", with
+// an undo button for a few seconds. A short or mostly vertical move is ignored.
+const SWIPE_DELETE = 110; // px
+
+function swipeToDelete(li, m) {
+  let startX = 0, startY = 0, dx = 0, active = false, sliding = false;
+  li.addEventListener("pointerdown", (e) => {
+    if (e.pointerType !== "touch") return;
+    active = true;
+    sliding = false;
+    dx = 0;
+    startX = e.clientX;
+    startY = e.clientY;
+  });
+  li.addEventListener("pointermove", (e) => {
+    if (!active) return;
+    const x = e.clientX - startX;
+    if (!sliding) {
+      if (Math.abs(e.clientY - startY) > 12) active = false; // scrolling the list
+      if (!active || x > -12) return;
+      sliding = true;
+      li.setPointerCapture?.(e.pointerId);
+      li.classList.add("sliding");
+    }
+    dx = Math.min(0, x);
+    li.style.transform = `translateX(${dx}px)`;
+    li.classList.toggle("will-delete", dx <= -SWIPE_DELETE);
+  });
+  const end = () => {
+    if (!active) return;
+    active = false;
+    if (!sliding) return;
+    li.dataset.swiped = "1"; // the click that follows must not open the mail
+    setTimeout(() => delete li.dataset.swiped, 300);
+    li.classList.remove("sliding", "will-delete");
+    if (dx <= -SWIPE_DELETE) {
+      li.style.transform = "translateX(-100%)";
+      attempt("Kustutamine", () => deleteBySwipe(m)).then((ok) => {
+        if (!ok) li.style.transform = "";
+      });
+    } else {
+      li.style.transform = "";
+    }
+  };
+  li.addEventListener("pointerup", end);
+  li.addEventListener("pointercancel", () => {
+    dx = 0;
+    end();
+  });
+  return li;
+}
+
+async function deleteBySwipe(m) {
+  const index = state.messages.indexOf(m);
+  const moved = await graph(`/me/messages/${m.id}/move`, { method: "POST", body: { destinationId: "deleteditems" } });
+  state.messages = state.messages.filter((x) => x !== m);
+  if (state.current?.id === m.id) {
+    state.current = null;
+    renderMessage();
+  }
+  renderList();
+  toast("Kiri viidi kausta „Kustutatud“.", false, {
+    label: "Võta tagasi",
+    run: () =>
+      attempt("Tagasivõtmine", async () => {
+        // A moved mail gets a new id; moving it back gives it another one.
+        const back = await graph(`/me/messages/${moved.id}/move`, { method: "POST", body: { destinationId: "inbox" } });
+        state.messages.splice(Math.min(index, state.messages.length), 0, { ...m, id: back.id });
+        renderList();
+        toast("Kiri on tagasi postkastis.");
+      }),
+  });
+  return true;
+}
+
 function renderList() {
   const list = $("mail-list");
   list.replaceChildren(
     ...state.messages.map((m) =>
-      h("li", {
+      swipeToDelete(h("li", {
         class: `mail-item${m.isRead ? "" : " unread"}${state.current?.id === m.id ? " selected" : ""}`,
         tabIndex: 0,
-        onclick: () => attempt("Kirja avamine", () => openMessage(m.id)),
+        onclick: (e) => {
+          if (e.currentTarget.dataset.swiped) return;
+          attempt("Kirja avamine", () => openMessage(m.id));
+        },
         onkeydown: (e) => {
           if (e.key === "Enter") attempt("Kirja avamine", () => openMessage(m.id));
         },
@@ -176,7 +254,7 @@ function renderList() {
         h("div", { class: "mail-subject" }, (m.hasAttachments ? "📎 " : "") + (m.subject || "(teemata)")),
         h("div", { class: "mail-preview" }, m.bodyPreview || ""),
         loadVerdicts().get(m.id) === 1 && h("div", { class: "mail-task-added" }, "✓ Ülesanne lisatud")
-      )
+      ), m)
     )
   );
   if (!state.messages.length) list.append(h("li", { class: "empty" }, "Kirju ei ole."));

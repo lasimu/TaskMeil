@@ -92,7 +92,10 @@ globalThis.fetch = window.fetch = async (url, options = {}) => {
     if (body.action === "triage") {
       assert.deepEqual(body.emails.map((e) => e.id), ["m1", "m2"]);
       assert.match(body.emails[0].from, /Mari Maasikas <mari@klient.ee>/);
-      return json({ result: { tasks: [{ id: "m1", title: "Saada Marile pakkumine", due_date: "2026-11-20", importance: "high" }] } });
+      return json({
+        result: { tasks: [{ id: "m1", title: "Saada Marile pakkumine", due_date: "2026-11-20", importance: "high" }] },
+        usage: { model: "eu.anthropic.claude-opus-4-6-v1", input_tokens: 1200, output_tokens: 300, cost_usd: 0.0149 },
+      });
     }
     assert.match(body.email.body, /palun saatke pakkumine reedeks/);
     assert.doesNotMatch(body.email.body, /alert|color:red/);
@@ -119,6 +122,8 @@ globalThis.fetch = window.fetch = async (url, options = {}) => {
   }
   if (p === "/me/messages/d1" && method === "PATCH") return json({});
   if (p === "/me/messages/d1/send") return new Response(null, { status: 202 });
+  if (p === "/me/messages/m2/move") return json({ id: "m2-deleted" }, 201);
+  if (p === "/me/messages/m2-deleted/move") return json({ id: "m2-back" }, 201);
   if (p === "/me/todo/lists") return json({ value: [{ id: "L1", displayName: "Ülesanded", wellknownListName: "defaultList" }] });
   if (p === "/me/todo/lists/L1/tasks" && method === "GET") {
     return json({ value: [
@@ -177,6 +182,7 @@ await tick(60);
   assert.equal(added[0].body.linkedResources[0].webUrl, "https://outlook.office.com/mail/m1");
   assert.equal(document.querySelectorAll(".mail-task-added").length, 1);
   assert.match($("toast").textContent, /2 kirja ja lisas 1 ülesannet/);
+  assert.match($("claude-usage").textContent, /1 päringut · 1[\s\u00a0]?500 tokenit · hinnanguliselt \$0\.015/);
   click($("mail-to-tasks"));
   await tick(60);
   assert.equal(calls.filter((c) => c.path === "/api/claude").length, 1, "mail already looked at is not sent again");
@@ -259,6 +265,34 @@ assert.equal(ev.start.timeZone, "UTC");
 click(document.querySelector("#cal-grid .event"));
 assert.equal($("event-title").value, "Koosolek");
 assert.equal($("event-delete").hidden, false);
+
+// Sliding a mail left on a touchscreen deletes it, with undo; the mouse does not
+{
+  const pointer = (el, type, x, pointerType) => {
+    const e = new window.MouseEvent(type, { bubbles: true, clientX: x, clientY: 10 });
+    Object.defineProperty(e, "pointerType", { value: pointerType });
+    Object.defineProperty(e, "pointerId", { value: 1 });
+    el.dispatchEvent(e);
+  };
+  const slide = (pointerType) => {
+    const item = document.querySelectorAll(".mail-item")[1];
+    pointer(item, "pointerdown", 300, pointerType);
+    pointer(item, "pointermove", 260, pointerType);
+    pointer(item, "pointermove", 150, pointerType);
+    pointer(item, "pointerup", 150, pointerType);
+  };
+  slide("mouse");
+  await tick();
+  assert.equal(sent("POST", "/move").length, 0, "dragging with the mouse deletes nothing");
+  slide("touch");
+  await tick();
+  assert.equal(sent("POST", "/me/messages/m2/move")[0].body.destinationId, "deleteditems");
+  assert.equal(document.querySelectorAll(".mail-item").length, 1);
+  click(document.querySelector("#toast .toast-action"));
+  await tick();
+  assert.equal(sent("POST", "/me/messages/m2-deleted/move")[0].body.destinationId, "inbox");
+  assert.equal(document.querySelectorAll(".mail-item").length, 2, "undo puts the mail back");
+}
 
 console.log(`Smoke test passed (${calls.length} requests checked).`);
 process.exit(0);

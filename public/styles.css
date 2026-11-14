@@ -124,6 +124,13 @@ button.link { border: 0; padding: 0; background: none; color: var(--brand); text
 .mail-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; flex: 1; }
 .mail-item { padding: 10px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
 .mail-item:hover, .mail-item.selected { background: var(--soft); }
+.mail-list { overflow-x: hidden; }
+.mail-item { touch-action: pan-y; transition: transform .18s ease; }
+.mail-item.sliding { transition: none; background: var(--soft); }
+.mail-item.will-delete { background: var(--danger); color: #fff; }
+.mail-item.will-delete .mail-preview, .mail-item.will-delete time { color: #fff; }
+.usage { margin: 0; padding: 4px 12px 6px; font-size: .78rem; color: var(--muted); border-bottom: 1px solid var(--line); cursor: help; }
+.toast-action { margin-left: 8px; padding: 2px 10px; border: 1px solid currentColor; border-radius: 99px; background: none; color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
 .mail-top { display: flex; gap: 8px; align-items: baseline; }
 .mail-from { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mail-top time { color: var(--muted); font-size: .8rem; }

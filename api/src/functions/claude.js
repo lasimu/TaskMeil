@@ -132,6 +132,28 @@ async function createOnBedrock(params) {
   throw lastError;
 }
 
+// USD per million tokens (input, output), for the cost estimate shown in the
+// app. Bedrock's geographic routing ("eu.", "us.") costs 10 percent more.
+const PRICES = [
+  ["opus-5-5", 4, 20],
+  ["sonnet-5", 2, 10],
+  ["haiku-5-5", 0.1, 0.5],
+  ["opus", 5, 25],
+  ["sonnet", 3, 15],
+  ["haiku", 1, 5],
+];
+function usageOf(response) {
+  const input =
+    (response.usage.input_tokens || 0) +
+    (response.usage.cache_creation_input_tokens || 0) +
+    (response.usage.cache_read_input_tokens || 0);
+  const output = response.usage.output_tokens || 0;
+  const price = PRICES.find(([name]) => MODEL.includes(name));
+  const premium = /^(eu|us|jp|au|apac)\./.test(MODEL) ? 1.1 : 1;
+  const cost = price ? ((input * price[1] + output * price[2]) / 1e6) * premium : 0;
+  return { model: MODEL, input_tokens: input, output_tokens: output, cost_usd: Number(cost.toFixed(6)) };
+}
+
 const MAX_EMAIL_CHARS = 120000;
 const MAX_TRIAGE_EMAILS = 40;
 
@@ -319,10 +341,9 @@ async function handler(request, context) {
         })),
     };
   }
-  context.log(
-    `claude ${action} for ${who.user}: in=${response.usage.input_tokens} out=${response.usage.output_tokens}`
-  );
-  return json(200, { result });
+  const usage = usageOf(response);
+  context.log(`claude ${action} for ${who.user}: ${usage.model} in=${usage.input_tokens} out=${usage.output_tokens}`);
+  return json(200, { result, usage });
 }
 
 app.http("claude", {

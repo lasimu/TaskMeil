@@ -5,6 +5,7 @@ import { $, attempt, busy } from "./util.js";
 import { initMail, loadInbox } from "./mail.js";
 import { initTasks, loadTaskLists, loadTasks } from "./tasks.js";
 import { initCalendar, loadCalendar } from "./calendar.js";
+import { recordUsage, renderUsage } from "./usage.js";
 
 // On a phone one pane is visible at a time; the bottom tabs switch between them.
 function showTab(name) {
@@ -59,6 +60,8 @@ async function start() {
   $("logout").addEventListener("click", () => attempt("Väljalogimine", logout));
   $("refresh").addEventListener("click", (e) => busy(e.currentTarget, "Värskendan…", refreshAll));
 
+  window.addEventListener("taskmeil:usage", (e) => recordUsage(e.detail));
+  renderUsage();
   initMail({ showTab });
   initTasks();
   initCalendar();

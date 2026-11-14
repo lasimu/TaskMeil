@@ -21,13 +21,27 @@ export function h(tag, props = {}, ...children) {
 }
 
 let toastTimer;
-export function toast(message, isError = false) {
+// action: optional { label, run } shown as a button in the message, e.g. undo.
+export function toast(message, isError = false, action = null) {
   const el = $("toast");
   el.textContent = message;
+  if (action) {
+    el.append(
+      " ",
+      h("button", {
+        class: "toast-action",
+        type: "button",
+        onclick: () => {
+          el.hidden = true;
+          action.run();
+        },
+      }, action.label)
+    );
+  }
   el.classList.toggle("error", isError);
   el.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (el.hidden = true), isError ? 7000 : 3500);
+  toastTimer = setTimeout(() => (el.hidden = true), action || isError ? 7000 : 3500);
 }
 
 // Runs an action and shows a readable message if it fails.
