@@ -7,8 +7,10 @@
 // for "task", { body } for "reply", and { tasks: [{ id, title, due_date,
 // importance }] } for "triage" (only the emails worth a to-do item).
 //
-// The Anthropic API key is read from the ANTHROPIC_API_KEY app setting and
-// never leaves this function. Nothing here can send mail: the function only
+// Claude is reached either through Amazon Bedrock (app settings
+// AWS_BEARER_TOKEN_BEDROCK + AWS_REGION) or through the Anthropic API
+// (ANTHROPIC_API_KEY). Bedrock wins when both are set. The key is read from
+// the app settings and never leaves this function. Nothing here can send mail: the function only
 // returns a suggestion and the user sends from the browser with their own click.
 
 const { app } = require("@azure/functions");
@@ -16,7 +18,9 @@ const Anthropic = require("@anthropic-ai/sdk");
 const { verifyUser, AuthError } = require("../lib/auth");
 const { SYSTEM, ACTIONS, buildUserMessage, buildTriageMessage } = require("../lib/prompts");
 
-const MODEL = process.env.CLAUDE_MODEL || "claude-opus-5-5";
+// With Bedrock the email text is processed inside AWS, in the chosen region.
+const BEDROCK = Boolean(process.env.AWS_BEARER_TOKEN_BEDROCK);
+const MODEL = process.env.CLAUDE_MODEL || (BEDROCK ? "anthropic.claude-opus-5-5" : "claude-opus-5-5");
 const MAX_EMAIL_CHARS = 120000;
 const MAX_TRIAGE_EMAILS = 40;
 
@@ -24,7 +28,14 @@ let client;
 function getClient() {
   if (!client) {
     // Static Web Apps cuts API calls off at about 45 seconds.
-    client = new Anthropic({ timeout: 40000, maxRetries: 1 });
+    const options = { timeout: 40000, maxRetries: 1 };
+    client = BEDROCK
+      ? new Anthropic({
+          ...options,
+          apiKey: process.env.AWS_BEARER_TOKEN_BEDROCK,
+          baseURL: `https://bedrock-mantle.${process.env.AWS_REGION}.api.aws/anthropic`,
+        })
+      : new Anthropic(options);
   }
   return client;
 }
@@ -45,8 +56,11 @@ async function handler(request, context) {
     return json(500, { error: "Sign-in check failed." });
   }
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return json(500, { error: "Server is missing ANTHROPIC_API_KEY." });
+  if (BEDROCK && !/^[a-z]{2}(-[a-z]+)+-\d$/.test(process.env.AWS_REGION || "")) {
+    return json(500, { error: "Server is missing AWS_REGION (for example eu-north-1)." });
+  }
+  if (!BEDROCK && !process.env.ANTHROPIC_API_KEY) {
+    return json(500, { error: "Server is missing AWS_BEARER_TOKEN_BEDROCK or ANTHROPIC_API_KEY." });
   }
 
   let input;
@@ -102,25 +116,31 @@ async function handler(request, context) {
     });
   }
 
+  const params = {
+    model: MODEL,
+    max_tokens: 8000,
+    system: ACTIONS[action].system || SYSTEM,
+    messages: [{ role: "user", content: userMessage }],
+    output_config: {
+      effort: ACTIONS[action].effort,
+      format: { type: "json_schema", schema: ACTIONS[action].schema },
+    },
+  };
   let response;
   try {
-    response = await getClient().beta.messages.create({
-      model: MODEL,
-      max_tokens: 8000,
-      // If the model declines a request, the API retries it on a fallback model.
-      betas: ["server-side-fallback-2026-07-01"],
-      fallbacks: "default",
-      system: ACTIONS[action].system || SYSTEM,
-      messages: [{ role: "user", content: userMessage }],
-      output_config: {
-        effort: ACTIONS[action].effort,
-        format: { type: "json_schema", schema: ACTIONS[action].schema },
-      },
-    });
+    response = BEDROCK
+      ? await getClient().messages.create(params)
+      : // If the model declines a request, the Anthropic API retries it on a
+        // fallback model. Bedrock does not offer this.
+        await getClient().beta.messages.create({
+          ...params,
+          betas: ["server-side-fallback-2026-07-01"],
+          fallbacks: "default",
+        });
   } catch (err) {
-    if (err instanceof Anthropic.AuthenticationError) {
-      context.error("Anthropic API key rejected");
-      return json(500, { error: "The Anthropic API key was rejected." });
+    if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+      context.error(`Claude API key rejected or model not allowed (${err.status}): ${err.message}`);
+      return json(500, { error: "The Claude API key was rejected, or it has no access to the model." });
     }
     if (err instanceof Anthropic.RateLimitError) {
       return json(429, { error: "Claude is busy right now. Try again in a moment." });
