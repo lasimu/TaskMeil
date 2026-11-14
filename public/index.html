@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="et">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Taskmeil</title>
+  <meta name="description" content="Kirjad, ülesanded ja kalender ühes vaates.">
+  <meta name="theme-color" content="#0f5c5c">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon-180.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<div id="login" class="login" hidden>
+  <img src="/icons/icon-192.png" alt="" width="96" height="96">
+  <h1>Taskmeil</h1>
+  <p>Kirjad, ülesanded ja kalender ühes vaates.</p>
+  <button id="login-btn" class="btn primary">Logi sisse Microsofti kontoga</button>
+  <p id="login-error" class="error" role="alert"></p>
+</div>
+
+<div id="app" class="app" hidden>
+  <header class="topbar">
+    <strong class="brand">Taskmeil</strong>
+    <span id="user-name" class="user"></span>
+    <button id="new-mail" class="btn primary">Uus kiri</button>
+    <button id="refresh" class="btn" title="Värskenda">Värskenda</button>
+    <button id="logout" class="btn" title="Logi välja">Logi välja</button>
+  </header>
+
+  <main class="panes">
+    <section id="pane-inbox" class="pane" aria-label="Postkast">
+      <div class="pane-head">
+        <h2>Postkast</h2>
+        <input id="mail-search" type="search" placeholder="Otsi kirju" aria-label="Otsi kirju">
+      </div>
+      <ul id="mail-list" class="mail-list"></ul>
+      <button id="mail-more" class="btn more" hidden>Laadi veel</button>
+    </section>
+
+    <section id="pane-read" class="pane" aria-label="Kiri">
+      <p id="read-empty" class="empty">Vali vasakult kiri.</p>
+      <div id="read-view" class="read-view" hidden>
+        <div class="read-head">
+          <h2 id="read-subject"></h2>
+          <p id="read-meta" class="meta"></p>
+          <div class="actions">
+            <button id="act-reply" class="btn">Vasta</button>
+            <button id="act-reply-all" class="btn">Vasta kõigile</button>
+            <button id="act-task" class="btn ai">Claude: tee ülesanne</button>
+            <button id="act-draft" class="btn ai">Claude: kirjuta vastus</button>
+            <button id="act-unread" class="btn">Märgi lugemata</button>
+            <button id="act-delete" class="btn danger">Kustuta</button>
+            <a id="act-outlook" class="btn" target="_blank" rel="noopener">Ava Outlookis</a>
+          </div>
+          <p id="read-notice" class="notice" hidden></p>
+        </div>
+        <iframe id="read-body" title="Kirja sisu" sandbox="allow-popups allow-popups-to-escape-sandbox"></iframe>
+      </div>
+    </section>
+
+    <section id="pane-tasks" class="pane" aria-label="Ülesanded">
+      <div class="pane-head">
+        <h2>Ülesanded</h2>
+        <select id="task-lists" aria-label="Ülesannete nimekiri"></select>
+      </div>
+      <form id="task-add" class="task-add">
+        <input id="task-new" type="text" placeholder="Lisa ülesanne ja vajuta Enter" aria-label="Uus ülesanne" maxlength="255" autocomplete="off">
+      </form>
+      <ul id="task-list" class="task-list"></ul>
+    </section>
+
+    <section id="pane-cal" class="pane" aria-label="Kalender">
+      <div class="pane-head">
+        <h2 id="cal-title">Täna</h2>
+        <div class="cal-nav">
+          <button id="cal-prev" class="btn" aria-label="Eelmine päev">‹</button>
+          <button id="cal-today" class="btn">Täna</button>
+          <button id="cal-next" class="btn" aria-label="Järgmine päev">›</button>
+        </div>
+      </div>
+      <div id="cal-allday" class="cal-allday"></div>
+      <div id="cal-scroll" class="cal-scroll">
+        <div id="cal-grid" class="cal-grid" title="Klõpsa, et lisada sündmus"></div>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tabs" aria-label="Vaated">
+    <button data-tab="inbox" class="active">Postkast</button>
+    <button data-tab="read">Kiri</button>
+    <button data-tab="tasks">Ülesanded</button>
+    <button data-tab="cal">Kalender</button>
+  </nav>
+</div>
+
+<dialog id="compose" class="dialog wide">
+  <form id="compose-form" method="dialog">
+    <h3 id="compose-title">Uus kiri</h3>
+    <label>Kellele
+      <input id="compose-to" type="text" autocomplete="off" placeholder="nimi@näide.ee, teine@näide.ee">
+    </label>
+    <ul id="compose-people" class="people" hidden></ul>
+    <label>Teema
+      <input id="compose-subject" type="text" maxlength="255">
+    </label>
+    <div id="compose-ai" class="ai-row">
+      <input id="compose-instruction" type="text" placeholder="Juhis Claudele (valikuline), nt „keeldu viisakalt“" maxlength="500">
+      <button id="compose-generate" type="button" class="btn ai">Claude: kirjuta mustand</button>
+    </div>
+    <label>Kiri
+      <textarea id="compose-body" rows="12"></textarea>
+    </label>
+    <p class="hint">Claude ei saada midagi. Kiri läheb teele ainult siis, kui vajutad „Saada“.</p>
+    <div class="dialog-actions">
+      <button id="compose-cancel" type="button" class="btn">Loobu</button>
+      <button id="compose-save" type="button" class="btn">Salvesta mustandina</button>
+      <button id="compose-send" type="button" class="btn primary">Saada</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="task-dialog" class="dialog">
+  <form id="task-form" method="dialog">
+    <h3>Claude'i ettepanek ülesandeks</h3>
+    <label>Ülesanne
+      <input id="task-title" type="text" maxlength="255" required>
+    </label>
+    <div class="row">
+      <label>Tähtaeg
+        <input id="task-due" type="date">
+      </label>
+      <label>Tähtsus
+        <select id="task-importance">
+          <option value="low">Madal</option>
+          <option value="normal">Tavaline</option>
+          <option value="high">Kõrge</option>
+        </select>
+      </label>
+    </div>
+    <label>Märkmed
+      <textarea id="task-notes" rows="6"></textarea>
+    </label>
+    <div class="dialog-actions">
+      <button id="task-cancel" type="button" class="btn">Loobu</button>
+      <button id="task-save" type="submit" class="btn primary">Lisa ülesanne</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="event-dialog" class="dialog">
+  <form id="event-form" method="dialog">
+    <h3 id="event-heading">Uus sündmus</h3>
+    <label>Pealkiri
+      <input id="event-title" type="text" maxlength="255" required>
+    </label>
+    <div class="row">
+      <label>Kuupäev
+        <input id="event-date" type="date" required>
+      </label>
+      <label>Algus
+        <input id="event-start" type="time" required>
+      </label>
+      <label>Lõpp
+        <input id="event-end" type="time" required>
+      </label>
+    </div>
+    <label>Asukoht
+      <input id="event-location" type="text" maxlength="255">
+    </label>
+    <div class="dialog-actions">
+      <button id="event-delete" type="button" class="btn danger" hidden>Kustuta</button>
+      <a id="event-outlook" class="btn" target="_blank" rel="noopener" hidden>Ava Outlookis</a>
+      <button id="event-cancel" type="button" class="btn">Loobu</button>
+      <button id="event-save" type="submit" class="btn primary">Salvesta</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="/config.js"></script>
+<script src="/vendor/msal-browser.min.js"></script>
+<script type="module" src="/js/app.js"></script>
+</body>
+</html>

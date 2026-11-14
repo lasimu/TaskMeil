@@ -1,0 +1,7 @@
+node_modules/
+# Local secrets: never commit these
+api/local.settings.json
+.env
+.env.*
+*.log
+.DS_Store

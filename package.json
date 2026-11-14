@@ -1,0 +1,16 @@
+{
+  "name": "taskmeil",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Taskmeil: mail, tasks and calendar in one view (PWA on Azure Static Web Apps).",
+  "type": "module",
+  "scripts": {
+    "test": "node tools/smoke-test.mjs",
+    "vendor": "cp node_modules/@azure/msal-browser/lib/msal-browser.min.js node_modules/@azure/msal-browser/lib/redirect-bridge/msal-redirect-bridge.min.js public/vendor/",
+    "start": "swa start public --api-location api"
+  },
+  "devDependencies": {
+    "@azure/msal-browser": "5.29.1",
+    "jsdom": "^31.0.1"
+  }
+}
