@@ -20,22 +20,65 @@ const { SYSTEM, ACTIONS, buildUserMessage, buildTriageMessage } = require("../li
 
 // With Bedrock the email text is processed inside AWS, in the chosen region.
 const BEDROCK = Boolean(process.env.AWS_BEARER_TOKEN_BEDROCK);
-// Bedrock offers different models per account and region, so without an
-// explicit CLAUDE_MODEL the function takes the first of these that exists
-// there and remembers it.
-const BEDROCK_MODELS = [
-  "anthropic.claude-opus-5-5",
-  "anthropic.claude-opus-4-8",
-  "anthropic.claude-sonnet-5",
-  "anthropic.claude-haiku-4-5",
+// Amazon Bedrock serves Claude at two addresses, and which models an account
+// gets differs per account and region:
+//   "mantle"  - bedrock-mantle, the current Messages API (Claude 4.7 and newer)
+//   "runtime" - bedrock-runtime, the older InvokeModel API (Claude 4.6 and older)
+// Without an explicit CLAUDE_MODEL the function finds the first model that
+// works and remembers it together with its address.
+const REGION = process.env.AWS_REGION || "";
+// Geographic prefix keeps processing inside that geography (eu-central-1 -> "eu.").
+const GEO = REGION.startsWith("eu-") ? "eu." : REGION.startsWith("us-") ? "us." : "global.";
+const MANTLE_MODEL = "anthropic.claude-opus-5-5";
+const RUNTIME_MODELS = [
+  `${GEO}anthropic.claude-opus-4-6-v1`,
+  `${GEO}anthropic.claude-sonnet-4-6`,
+  `${GEO}anthropic.claude-haiku-4-5-20251001-v1:0`,
 ];
-let MODEL = process.env.CLAUDE_MODEL || (BEDROCK ? BEDROCK_MODELS[0] : "claude-opus-5-5");
+let MODEL = process.env.CLAUDE_MODEL || (BEDROCK ? MANTLE_MODEL : "claude-opus-5-5");
+let route = null; // "mantle" | "runtime", once a model has answered
+let offered = null; // what the mantle address lists for this key, once asked
 
-let offered = null; // model ids the Bedrock region lists for this key, once asked
+let runtimeClient;
+function getRuntimeClient() {
+  if (!runtimeClient) {
+    const { AnthropicBedrock } = require("@anthropic-ai/bedrock-sdk");
+    runtimeClient = new AnthropicBedrock({
+      apiKey: process.env.AWS_BEARER_TOKEN_BEDROCK,
+      awsRegion: REGION,
+      timeout: 40000,
+      maxRetries: 1,
+    });
+  }
+  return runtimeClient;
+}
 
-// Asks the Bedrock region which models this key can use.
-async function listBedrockModels() {
-  const res = await fetch(`https://bedrock-mantle.${process.env.AWS_REGION}.api.aws/v1/models`, {
+// The model or address is wrong for this account, as opposed to a real failure.
+const isMissing = (err) => [400, 403, 404].includes(err?.status);
+
+async function viaMantle(params, model) {
+  return getClient().messages.create({ ...params, model });
+}
+
+// The older models take the JSON shape as a tool they are required to call.
+async function viaRuntime(params, model) {
+  const { output_config: config, ...rest } = params;
+  const response = await getRuntimeClient().messages.create({
+    ...rest,
+    model,
+    tools: [{ name: "result", description: "Return the result.", input_schema: config.format.schema }],
+    tool_choice: { type: "tool", name: "result" },
+  });
+  const call = response.content.find((block) => block.type === "tool_use");
+  return {
+    stop_reason: response.stop_reason === "tool_use" ? "end_turn" : response.stop_reason,
+    usage: response.usage,
+    content: call ? [{ type: "text", text: JSON.stringify(call.input) }] : [],
+  };
+}
+
+async function listMantleModels() {
+  const res = await fetch(`https://bedrock-mantle.${REGION}.api.aws/v1/models`, {
     headers: { Authorization: `Bearer ${process.env.AWS_BEARER_TOKEN_BEDROCK}` },
     signal: AbortSignal.timeout(8000),
   });
@@ -44,43 +87,46 @@ async function listBedrockModels() {
   return (data.data || []).map((m) => m.id).filter((id) => typeof id === "string");
 }
 
-const isMissing = (err) =>
-  err instanceof Anthropic.NotFoundError || err instanceof Anthropic.PermissionDeniedError;
-
 async function createOnBedrock(params) {
-  // A model set by hand or already found by asking the region is used as it is.
-  const candidates = BEDROCK_MODELS.includes(MODEL) && !process.env.CLAUDE_MODEL
-    ? BEDROCK_MODELS.slice(BEDROCK_MODELS.indexOf(MODEL))
-    : [MODEL];
+  if (route) return route === "mantle" ? viaMantle(params, MODEL) : viaRuntime(params, MODEL);
+
   let lastError;
-  const attempt = async (model) => {
+  const attempt = async (via, name, model) => {
     try {
-      const response = await getClient().messages.create({ ...params, model });
+      const response = await via(params, model);
       MODEL = model;
+      route = name;
       return response;
     } catch (err) {
       if (!isMissing(err)) throw err;
+      MODEL = model;
       lastError = err;
       return null;
     }
   };
-  for (const model of candidates) {
-    const response = await attempt(model);
-    if (response) return response;
+
+  const chosen = process.env.CLAUDE_MODEL;
+  const mantle = [chosen || MANTLE_MODEL];
+  let response = await attempt(viaMantle, "mantle", mantle[0]);
+  if (response) return response;
+  if (!chosen) {
+    // Ask what this address does offer and take its strongest Claude models.
+    try {
+      offered = await listMantleModels();
+    } catch (err) {
+      offered = [`(${err.message})`];
+    }
+    const rank = (id) => ["haiku", "sonnet", "opus"].findIndex((tier) => id.includes(tier));
+    const claude = offered
+      .filter((id) => id.includes("claude") && id !== MANTLE_MODEL)
+      .sort((a, b) => rank(b) - rank(a) || b.localeCompare(a));
+    for (const model of claude.slice(0, 3)) {
+      response = await attempt(viaMantle, "mantle", model);
+      if (response) return response;
+    }
   }
-  // None of the usual names exist here: ask the region what it does offer and
-  // take its strongest Claude model (ids may carry a prefix such as "eu.").
-  try {
-    offered = await listBedrockModels();
-  } catch (err) {
-    offered = [`(${err.message})`];
-  }
-  const rank = (id) => ["haiku", "sonnet", "opus"].findIndex((tier) => id.includes(tier));
-  const claude = offered
-    .filter((id) => id.includes("claude") && !candidates.includes(id))
-    .sort((a, b) => rank(b) - rank(a) || b.localeCompare(a));
-  for (const model of claude.slice(0, 4)) {
-    const response = await attempt(model);
+  for (const model of chosen ? [chosen] : RUNTIME_MODELS) {
+    response = await attempt(viaRuntime, "runtime", model);
     if (response) return response;
   }
   throw lastError;
@@ -109,8 +155,9 @@ function getClient() {
 // something is misconfigured. It holds no key and no email text.
 function upstreamDetail(err) {
   const message = String(err?.error?.error?.message || err?.error?.message || err?.message || "").slice(0, 300);
-  const list = offered ? ` Models offered here: ${offered.join(", ").slice(0, 900) || "none"}.` : "";
-  return `${BEDROCK ? "Bedrock " + process.env.AWS_REGION : "Anthropic"}, model ${MODEL}, HTTP ${err?.status}: ${message}${list}`;
+  const claude = offered ? offered.filter((id) => id.includes("claude")) : null;
+  const list = claude ? ` Claude models listed at the newer address: ${claude.join(", ").slice(0, 400) || "none"}.` : "";
+  return `${BEDROCK ? "Bedrock " + REGION : "Anthropic"}, last tried ${MODEL}, HTTP ${err?.status}: ${message}${list}`;
 }
 
 const str = (v, max) => (typeof v === "string" ? v.slice(0, max) : "");
@@ -211,7 +258,13 @@ async function handler(request, context) {
           fallbacks: "default",
         });
   } catch (err) {
-    if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
+    // The older Bedrock client has its own error classes, so go by status too.
+    const timedOut = /timed? ?out|connection error/i.test(err?.message || "") && !err?.status;
+    if (err?.status === 429) {
+      return json(429, { error: "Claude is busy right now. Try again in a moment." });
+    }
+    if (timedOut) return json(504, { error: "Claude did not answer in time. Try again." });
+    if ([401, 403].includes(err?.status)) {
       context.error(`Claude API key rejected or model not allowed (${err.status}): ${err.message}`);
       return json(500, {
         error: "The Claude API key was rejected, or it has no access to the model.",
@@ -224,7 +277,7 @@ async function handler(request, context) {
     if (err instanceof Anthropic.APIConnectionError) {
       return json(504, { error: "Claude did not answer in time. Try again." });
     }
-    if (err instanceof Anthropic.APIError) {
+    if (err instanceof Anthropic.APIError || err?.status) {
       context.error(`Anthropic API error ${err.status}: ${err.message}`);
       return json(502, { error: "Claude returned an error. Try again.", detail: upstreamDetail(err) });
     }

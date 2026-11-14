@@ -9,6 +9,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@anthropic-ai/bedrock-sdk": "^0.36.0",
     "@anthropic-ai/sdk": "^1.8.0",
     "@azure/functions": "^4.17.1",
     "jose": "^6.2.17"
