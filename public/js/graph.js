@@ -1,7 +1,7 @@
 // Thin wrapper around Microsoft Graph. All mail, calendar and task data
 // goes directly between the browser and Microsoft.
 
-import { getGraphToken, getIdToken } from "./auth.js";
+import { getGraphToken } from "./auth.js";
 
 const ROOT = "https://graph.microsoft.com/v1.0";
 
@@ -44,56 +44,6 @@ export async function graph(path, { method = "GET", body, headers = {} } = {}) {
     const text = await res.text();
     return text ? JSON.parse(text) : null;
   }
-}
-
-const CLAUDE_ERRORS = {
-  401: "Sisselogimine aegus. Laadi leht uuesti.",
-  403: "Sul ei ole õigust Claude'i siin kasutada.",
-  413: "Kiri on Claude'i jaoks liiga pikk.",
-  422: "Claude keeldus selle kirjaga aitamast.",
-  429: "Claude on praegu hõivatud. Proovi mõne hetke pärast uuesti.",
-  504: "Claude ei vastanud õigel ajal. Proovi uuesti.",
-};
-
-// Asks our server function for a suggestion. It returns text only.
-export function askClaude(action, email, instructions = "") {
-  return callClaude({ action, email, instructions });
-}
-
-// Asks which of these inbox emails are worth a to-do item.
-// emails: [{ id, from, subject, received, preview }] -> [{ id, title, due_date, importance }]
-export async function askClaudeTriage(emails) {
-  return (await callClaude({ action: "triage", emails })).tasks || [];
-}
-
-async function callClaude(payload) {
-  const res = await fetch("/api/claude", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Taskmeil-Token": await getIdToken(),
-    },
-    body: JSON.stringify({
-      ...payload,
-      today: `${new Date().toLocaleDateString("en-GB", { weekday: "long" })} ${localDate(new Date())}`,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    }),
-  });
-  let data = null;
-  try {
-    data = await res.json();
-  } catch {
-    /* not JSON */
-  }
-  if (!res.ok || !data?.result) {
-    const message = CLAUDE_ERRORS[res.status] || "Claude'i vastust ei saadud kätte. Proovi uuesti.";
-    const detail = data?.detail || (CLAUDE_ERRORS[res.status] ? "" : data?.error);
-    throw new Error(detail ? `${message} (${detail})` : message);
-  }
-  window.dispatchEvent(
-    new window.CustomEvent("taskmeil:usage", { detail: { usage: data.usage, action: payload.action } })
-  );
-  return data.result;
 }
 
 export function localDate(d) {

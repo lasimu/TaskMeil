@@ -6,11 +6,13 @@
   "type": "module",
   "scripts": {
     "test": "node tools/smoke-test.mjs",
-    "vendor": "cp node_modules/@azure/msal-browser/lib/msal-browser.min.js node_modules/@azure/msal-browser/lib/redirect-bridge/msal-redirect-bridge.min.js public/vendor/",
-    "start": "swa start public --api-location api"
+    "vendor": "cp node_modules/@azure/msal-browser/lib/msal-browser.min.js node_modules/@azure/msal-browser/lib/redirect-bridge/msal-redirect-bridge.min.js public/vendor/ && esbuild node_modules/@anthropic-ai/sdk/index.mjs --bundle --format=esm --platform=browser --minify --outfile=public/vendor/anthropic.min.js",
+    "start": "swa start public"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^1.11.0",
     "@azure/msal-browser": "5.29.1",
+    "esbuild": "^0.28.2",
     "jsdom": "^31.0.1"
   }
 }

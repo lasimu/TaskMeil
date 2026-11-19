@@ -4,6 +4,7 @@
 
 import { $ } from "./util.js";
 import { localDate } from "./graph.js";
+import { claudeKey, setClaudeKey } from "./claude.js";
 
 const KEY = "taskmeil.usage";
 const LIMIT_KEY = "taskmeil.markLimit";
@@ -40,7 +41,7 @@ export function markingAllowed() {
   return thisMonth().markCost * EUR_PER_USD < markLimit();
 }
 
-// usage: { model, input_tokens, output_tokens, cost_usd } from /api/claude;
+// usage: { model, input_tokens, output_tokens, cost_usd } from claude.js;
 // action: "triage" is the automatic marking, the others are the user's clicks.
 export function recordUsage(usage, action) {
   if (!usage) return;
@@ -85,6 +86,11 @@ export function renderUsage() {
   const month = thisMonth();
   const limit = markLimit();
   const stopped = month.markCost * EUR_PER_USD >= limit;
+  if (!claudeKey()) {
+    el.textContent = "Claude on välja lülitatud: lisa API võti nupu „Kulu ja limiit“ alt.";
+    el.classList.remove("over");
+    return;
+  }
   el.textContent =
     `Claude sel kuul: ${num(month.calls)} päringut · ${num(month.input + month.output)} tokenit · kokku hinnanguliselt ${cost(month.cost)}` +
     (!limit
@@ -105,6 +111,7 @@ export function initUsage({ onLimitChange }) {
       `${num(month.markCalls)} päringut, hinnanguliselt ${cost(month.markCost)} / ${eur(markLimit())} kuus`;
     $("usage-model").textContent = month.model || "veel kasutamata";
     $("usage-limit").value = markLimit();
+    $("claude-key").value = claudeKey();
     dialog.showModal();
   };
   $("usage-open").addEventListener("click", open);
@@ -114,6 +121,7 @@ export function initUsage({ onLimitChange }) {
     e.preventDefault();
     const value = Number(String($("usage-limit").value).replace(",", "."));
     if (!Number.isFinite(value) || value < 0) return;
+    setClaudeKey($("claude-key").value);
     try {
       localStorage.setItem(LIMIT_KEY, String(value));
     } catch {

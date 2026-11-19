@@ -66,13 +66,3 @@ async function silent(request) {
 export async function getGraphToken() {
   return (await silent({ scopes: GRAPH_SCOPES })).accessToken;
 }
-
-// ID token that proves to /api/claude who is calling. Refreshed when close to expiry.
-export async function getIdToken() {
-  let result = await silent({ scopes: GRAPH_SCOPES });
-  const exp = result.idTokenClaims?.exp || 0;
-  if (exp * 1000 < Date.now() + 5 * 60 * 1000) {
-    result = await silent({ scopes: GRAPH_SCOPES, forceRefresh: true });
-  }
-  return result.idToken;
-}

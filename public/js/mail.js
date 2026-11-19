@@ -1,6 +1,7 @@
 // Inbox list, reading pane and the compose/reply dialog.
 
-import { graph, askClaude, askClaudeTriage } from "./graph.js";
+import { graph } from "./graph.js";
+import { askClaude, askClaudeTriage, claudeKey } from "./claude.js";
 import { getAccount } from "./auth.js";
 import { $, h, toast, attempt, busy, escapeHtml, fmtShort, fmtFull, addr, who, htmlToText } from "./util.js";
 import { markingAllowed } from "./usage.js";
@@ -127,7 +128,7 @@ export function markInbox() {
 }
 
 async function triage() {
-  if (triageBusy || Date.now() < triagePausedUntil || !markingAllowed()) return;
+  if (triageBusy || Date.now() < triagePausedUntil || !claudeKey() || !markingAllowed()) return;
   const known = loadVerdicts();
   const fresh = state.messages.filter((m) => !known.has(m.id)).slice(0, TRIAGE_BATCH);
   if (!fresh.length) return;

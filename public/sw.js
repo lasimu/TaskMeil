@@ -1,13 +1,14 @@
 // Service worker: makes Taskmeil installable and lets the app shell open
 // without a connection. Mail, calendar and task data are never cached here.
 
-const CACHE = "taskmeil-shell-v1";
+const CACHE = "taskmeil-shell-v2";
 const SHELL = [
   "/",
   "/styles.css",
   "/config.js",
   "/manifest.webmanifest",
   "/vendor/msal-browser.min.js",
+  "/vendor/anthropic.min.js",
   "/js/app.js",
   "/js/auth.js",
   "/js/graph.js",
@@ -15,6 +16,8 @@ const SHELL = [
   "/js/mail.js",
   "/js/tasks.js",
   "/js/calendar.js",
+  "/js/usage.js",
+  "/js/claude.js",
   "/icons/icon-192.png",
 ];
 
@@ -34,9 +37,9 @@ self.addEventListener("activate", (event) => {
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   const url = new URL(request.url);
-  // Only our own static files. Sign-in pages and the API always go to the network.
+  // Only our own static files. Sign-in pages always go to the network.
   if (request.method !== "GET" || url.origin !== location.origin) return;
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/")) return;
+  if (url.pathname.startsWith("/auth/")) return;
 
   // Network first, so a new version is picked up at once; cache when offline.
   event.respondWith(
