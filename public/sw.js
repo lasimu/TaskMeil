@@ -1,13 +1,15 @@
 // Service worker: makes Taskmeil installable and lets the app shell open
 // without a connection. Mail, calendar and task data are never cached here.
 
-const CACHE = "taskmeil-shell-v3";
+const CACHE = "taskmeil-shell-v4";
 const SHELL = [
   "/",
   "/styles.css",
   "/config.js",
   "/manifest.webmanifest",
   "/vendor/msal-browser.min.js",
+  "/vendor/fonts/inter-tight-latin-wght-normal.woff2",
+  "/vendor/fonts/inter-tight-latin-ext-wght-normal.woff2",
   "/js/app.js",
   "/js/auth.js",
   "/js/graph.js",
