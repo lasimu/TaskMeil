@@ -1,11 +1,11 @@
 // Start-up: sign in, then load the three panes and keep them fresh.
 
 import { initAuth, isConfigured, login, logout } from "./auth.js";
-import { $, attempt, busy } from "./util.js";
-import { initMail, loadInbox, markInbox } from "./mail.js";
+import { $, attempt, busy, toast } from "./util.js";
+import { initMail, loadInbox } from "./mail.js";
 import { initTasks, loadTaskLists, loadTasks } from "./tasks.js";
 import { initCalendar, loadCalendar } from "./calendar.js";
-import { recordUsage, initUsage } from "./usage.js";
+import { MARK_PROMPT } from "./claude.js";
 
 // On a phone one pane is visible at a time; the bottom tabs switch between them.
 function showTab(name) {
@@ -51,6 +51,22 @@ function refreshAll() {
   ]);
 }
 
+// How to let Claude mark the inbox on the user's own subscription.
+function initClaudeHelp() {
+  const dialog = $("claude-dialog");
+  $("claude-prompt").value = MARK_PROMPT;
+  for (const id of ["claude-open", "claude-setup"]) {
+    $(id).addEventListener("click", () => dialog.showModal());
+  }
+  $("claude-close").addEventListener("click", () => dialog.close());
+  $("claude-copy").addEventListener("click", () =>
+    attempt("Kopeerimine", async () => {
+      await navigator.clipboard.writeText(MARK_PROMPT);
+      toast("Juhis on kopeeritud. Kleebi see Claude'i.");
+    })
+  );
+}
+
 function showLogin(message = "") {
   $("login").hidden = false;
   $("app").hidden = true;
@@ -92,8 +108,7 @@ async function start() {
   $("logout").addEventListener("click", () => attempt("Väljalogimine", logout));
   $("refresh").addEventListener("click", (e) => busy(e.currentTarget, "Värskendan…", refreshAll));
 
-  window.addEventListener("taskmeil:usage", (e) => recordUsage(e.detail.usage, e.detail.action));
-  initUsage({ onLimitChange: markInbox });
+  initClaudeHelp();
   initMail({ showTab });
   initTasks();
   initCalendar();

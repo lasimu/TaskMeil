@@ -1,14 +1,13 @@
 // Inbox list, reading pane and the compose/reply dialog.
 
 import { graph } from "./graph.js";
-import { askClaude, askClaudeTriage, claudeKey } from "./claude.js";
+import { MARK, URGENT, CLAUDE_URL, replyPrompt } from "./claude.js";
 import { getAccount } from "./auth.js";
 import { $, h, toast, attempt, busy, escapeHtml, fmtShort, fmtFull, addr, who, htmlToText } from "./util.js";
-import { markingAllowed } from "./usage.js";
 import { proposeTask } from "./tasks.js";
 
-const LIST_FIELDS = "id,subject,from,receivedDateTime,isRead,bodyPreview,hasAttachments,webLink";
-const READ_FIELDS = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,body,hasAttachments,webLink,isRead";
+const LIST_FIELDS = "id,subject,from,receivedDateTime,isRead,bodyPreview,hasAttachments,webLink,categories";
+const READ_FIELDS = "id,subject,from,toRecipients,ccRecipients,receivedDateTime,body,bodyPreview,hasAttachments,webLink,isRead,categories";
 
 const state = {
   messages: [],
@@ -32,23 +31,18 @@ export function initMail(options) {
   $("act-reply-all").addEventListener("click", () => openCompose("replyAll"));
   $("act-draft").addEventListener("click", () => {
     openCompose("reply");
-    generateDraft();
+    attempt("Claude'i avamine", askInClaude);
   });
-  $("act-task").addEventListener("click", (e) =>
-    busy(e.currentTarget, "Claude mõtleb…", () =>
-      attempt("Ülesande koostamine", async () => {
-        const mail = state.current;
-        const suggestion = await askClaude("task", mailForClaude(mail));
-        proposeTask(suggestion, mail);
-      })
-    )
-  );
+  $("act-task").addEventListener("click", () => {
+    const mail = state.current;
+    proposeTask(taskFromMail(mail), mail, () => attempt("Märke eemaldamine", () => unmark(mail.id)));
+  });
   $("act-unread").addEventListener("click", () => attempt("Märkimine", markUnread));
   $("act-delete").addEventListener("click", () => attempt("Kustutamine", deleteCurrent));
 
   $("new-mail").addEventListener("click", () => openCompose("new"));
   $("compose-cancel").addEventListener("click", () => $("compose").close());
-  $("compose-generate").addEventListener("click", generateDraft);
+  $("compose-generate").addEventListener("click", () => attempt("Claude'i avamine", askInClaude));
   $("compose-send").addEventListener("click", (e) =>
     busy(e.currentTarget, "Saadan…", () => attempt("Saatmine", () => deliver(true)))
   );
@@ -72,7 +66,6 @@ export async function loadInbox({ quiet = false } = {}) {
   state.messages = data.value;
   state.nextLink = data["@odata.nextLink"] || null;
   renderList();
-  if (!query) triage();
 }
 
 async function loadMore() {
@@ -81,104 +74,54 @@ async function loadMore() {
   state.messages.push(...data.value);
   state.nextLink = data["@odata.nextLink"] || null;
   renderList();
-  if (!$("mail-search").value.trim()) triage();
 }
 
-// ---------- Claude's task suggestions ----------
-// Claude looks at the sender, subject and first lines of inbox mail it has not
-// seen yet and marks the ones worth a to-do item. Each verdict is remembered in
-// this browser, so a message is sent to Claude once. Marking adds nothing by
-// itself: the user confirms each task in the task dialog.
+// ---------- Claude's marks ----------
+// Claude works in its own app on the user's subscription and marks the emails
+// that need action with an Outlook category. Taskmeil shows the mark; a task is
+// added only when the user confirms it, and the mark is then taken off again.
 
-const TRIAGE_BATCH = 30;
-const TRIAGE_KEEP = 500;
-const triageKey = () => `taskmeil.triage.${getAccount()?.username || ""}`;
-let verdicts = null; // message id -> { title, due_date, importance } | 0 (no task, added or dismissed)
-let triageBusy = false;
-let triagePausedUntil = 0;
+const has = (m, name) => (m.categories || []).some((c) => c.toLowerCase() === name.toLowerCase());
+const isMarked = (m) => has(m, MARK) || has(m, URGENT);
 
-function loadVerdicts() {
-  if (verdicts) return verdicts;
-  verdicts = new Map();
-  try {
-    for (const [id, v] of JSON.parse(localStorage.getItem(triageKey()) || "[]")) verdicts.set(id, v);
-  } catch {
-    /* no storage, or nothing saved yet */
-  }
-  return verdicts;
+// What the task dialog starts with; the user edits it before saving.
+function taskFromMail(m) {
+  const preview = (m.bodyPreview || "").trim();
+  return {
+    title: m.subject || "",
+    notes: `Kiri: ${who(m.from)} – ${m.subject || "(teemata)"}${preview ? `\n\n${preview}` : ""}`,
+    due_date: null,
+    importance: has(m, URGENT) ? "high" : "normal",
+  };
 }
 
-function saveVerdicts() {
-  try {
-    localStorage.setItem(triageKey(), JSON.stringify([...verdicts].slice(-TRIAGE_KEEP)));
-  } catch {
-    /* storage unavailable: verdicts last until the page is closed */
-  }
-}
-
-function setVerdict(id, value) {
-  loadVerdicts().delete(id); // re-insert so the newest stay when old ones are trimmed
-  verdicts.set(id, value);
-  saveVerdicts();
-}
-
-// Runs the marking again, e.g. after the user raised the monthly limit.
-export function markInbox() {
-  if (!$("mail-search").value.trim()) triage();
-}
-
-async function triage() {
-  if (triageBusy || Date.now() < triagePausedUntil || !claudeKey() || !markingAllowed()) return;
-  const known = loadVerdicts();
-  const fresh = state.messages.filter((m) => !known.has(m.id)).slice(0, TRIAGE_BATCH);
-  if (!fresh.length) return;
-  triageBusy = true;
-  try {
-    const picks = await askClaudeTriage(
-      fresh.map((m) => ({
-        id: m.id,
-        from: `${who(m.from)} <${addr(m.from)}>`,
-        subject: m.subject || "",
-        received: m.receivedDateTime,
-        preview: m.bodyPreview || "",
-      }))
-    );
-    for (const m of fresh) known.set(m.id, 0);
-    for (const p of picks) known.set(p.id, { title: p.title, due_date: p.due_date, importance: p.importance });
-    saveVerdicts();
-    renderList();
-  } catch (err) {
-    // Suggestions are an extra: say once why they are missing, then try again later.
-    console.warn("Claude task suggestions unavailable:", err.message);
-    toast(`Claude ei saanud kirju ülesanneteks märgistada. ${err.message}`, true);
-    triagePausedUntil = Date.now() + 10 * 60 * 1000;
-  } finally {
-    triageBusy = false;
-  }
-  if (state.messages.some((m) => !known.has(m.id)) && Date.now() >= triagePausedUntil && markingAllowed()) triage();
+// Takes Claude's categories off a message and leaves the user's own in place.
+async function unmark(id) {
+  const targets = [state.messages.find((m) => m.id === id), state.current?.id === id ? state.current : null]
+    .filter((m) => m && isMarked(m));
+  if (!targets.length) return;
+  const categories = (targets[0].categories || []).filter(
+    (c) => ![MARK, URGENT].some((name) => name.toLowerCase() === c.toLowerCase())
+  );
+  await graph(`/me/messages/${id}`, { method: "PATCH", body: { categories } });
+  for (const m of targets) m.categories = categories;
+  renderList();
 }
 
 function suggestionRow(m) {
-  const pick = loadVerdicts().get(m.id);
-  if (!pick?.title) return null; // 0 = no task; 1 = added by an earlier version
+  if (!isMarked(m)) return null;
   const stop = (fn) => (e) => {
     e.stopPropagation();
     fn();
   };
   return h("div", { class: "mail-suggest", onclick: (e) => e.stopPropagation() },
-    h("span", { class: "mail-suggest-title", title: "Claude'i soovitus" }, `✓ ${pick.title}`),
+    h("span", { class: "mail-suggest-title", title: "Claude märkis selle kirja" },
+      has(m, URGENT) ? "✓ Claude: vajab tegevust, kiire" : "✓ Claude: vajab tegevust"),
     h("button", {
       class: "btn small",
       type: "button",
       onclick: stop(() =>
-        proposeTask(
-          { ...pick, notes: `Kiri: ${who(m.from)} – ${m.subject || "(teemata)"}` },
-          m,
-          () => {
-            setVerdict(m.id, 0);
-            renderList();
-          }
-        )
+        proposeTask(taskFromMail(m), m, () => attempt("Märke eemaldamine", () => unmark(m.id)))
       ),
     }, "Lisa ülesanne"),
     h("button", {
@@ -186,10 +129,7 @@ function suggestionRow(m) {
       type: "button",
       "aria-label": "Ei ole ülesanne",
       title: "Ei ole ülesanne",
-      onclick: stop(() => {
-        setVerdict(m.id, 0);
-        renderList();
-      }),
+      onclick: stop(() => attempt("Märke eemaldamine", () => unmark(m.id))),
     }, "✕")
   );
 }
@@ -465,20 +405,22 @@ function openCompose(mode) {
   (isReply ? $("compose-body") : to).focus();
 }
 
-// Claude writes a draft into the text box. Nothing is sent.
-async function generateDraft() {
+// Copies the email and a request for a reply to the clipboard and opens
+// Claude, where the user's subscription does the writing. The user pastes it
+// there and brings the answer back into the text box. Nothing is sent.
+async function askInClaude() {
   const { source } = state.compose;
-  const button = $("compose-generate");
-  const box = $("compose-body");
-  if (box.value.trim() && !confirm("Kas asendada praegune tekst Claude'i mustandiga?")) return;
-  await busy(button, "Claude kirjutab…", () =>
-    attempt("Mustandi koostamine", async () => {
-      const result = await askClaude("reply", mailForClaude(source), $("compose-instruction").value);
-      if (state.compose?.source !== source || !$("compose").open) return;
-      box.value = result.body;
-      box.focus();
-    })
-  );
+  const account = getAccount();
+  const prompt = replyPrompt(mailForClaude(source), account?.name || account?.username || "", $("compose-instruction").value);
+  // Both start inside the click, so the browser allows the copy and the new tab.
+  const copied = navigator.clipboard.writeText(prompt);
+  window.open(CLAUDE_URL, "_blank", "noopener");
+  try {
+    await copied;
+  } catch {
+    throw new Error("Kirja ei saanud lõikelauale kopeerida.");
+  }
+  toast("Kiri ja palve on kopeeritud. Kleebi need Claude'i ja too vastus siia tagasi.");
 }
 
 function parseRecipients(text) {

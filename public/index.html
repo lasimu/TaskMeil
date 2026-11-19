@@ -32,7 +32,7 @@
     </nav>
     <span id="user-name" class="user"></span>
     <button id="new-mail" class="btn primary">Uus kiri</button>
-    <button id="usage-open" class="btn" title="Claude'i API võti, kasutus, kulu ja märgistamise kuulimiit">Kulu ja limiit</button>
+    <button id="claude-open" class="btn" title="Kuidas Claude sinu tellimusega kirju märgib">Claude</button>
     <button id="refresh" class="btn" title="Värskenda">Värskenda</button>
     <button id="logout" class="btn" title="Logi välja">Logi välja</button>
   </header>
@@ -44,8 +44,8 @@
         <input id="mail-search" type="search" placeholder="Otsi kirju" aria-label="Otsi kirju">
       </div>
       <div class="usage-row">
-        <p id="claude-usage" class="usage"></p>
-        <button id="usage-edit" class="link" type="button">Muuda limiiti</button>
+        <p class="usage">Claude märgib tegevust nõudvad kirjad sinu tellimuse kaudu.</p>
+        <button id="claude-setup" class="link" type="button">Seadistus</button>
       </div>
       <ul id="mail-list" class="mail-list"></ul>
       <button id="mail-more" class="btn more" hidden>Laadi veel</button>
@@ -60,8 +60,8 @@
           <div class="actions">
             <button id="act-reply" class="btn">Vasta</button>
             <button id="act-reply-all" class="btn">Vasta kõigile</button>
-            <button id="act-task" class="btn ai">Claude: tee ülesanne</button>
-            <button id="act-draft" class="btn ai">Claude: kirjuta vastus</button>
+            <button id="act-task" class="btn">Tee ülesanne</button>
+            <button id="act-draft" class="btn ai">Küsi Claude'ilt vastust</button>
             <button id="act-unread" class="btn">Märgi lugemata</button>
             <button id="act-delete" class="btn danger">Kustuta</button>
             <a id="act-outlook" class="btn" target="_blank" rel="noopener">Ava Outlookis</a>
@@ -128,12 +128,12 @@
     </label>
     <div id="compose-ai" class="ai-row">
       <input id="compose-instruction" type="text" placeholder="Juhis Claudele (valikuline), nt „keeldu viisakalt“" maxlength="500">
-      <button id="compose-generate" type="button" class="btn ai">Claude: kirjuta mustand</button>
+      <button id="compose-generate" type="button" class="btn ai">Küsi Claude'ilt</button>
     </div>
     <label>Kiri
       <textarea id="compose-body" rows="12"></textarea>
     </label>
-    <p class="hint">Claude ei saada midagi. Kiri läheb teele ainult siis, kui vajutad „Saada“.</p>
+    <p class="hint">„Küsi Claude'ilt“ kopeerib kirja ja sinu juhise ning avab Claude'i: kleebi need sinna ja too vastus siia tagasi. Kiri läheb teele ainult siis, kui vajutad „Saada“.</p>
     <div class="dialog-actions">
       <button id="compose-cancel" type="button" class="btn">Loobu</button>
       <button id="compose-save" type="button" class="btn">Salvesta mustandina</button>
@@ -142,33 +142,29 @@
   </form>
 </dialog>
 
-<dialog id="usage-dialog" class="dialog">
-  <form id="usage-form" method="dialog">
-    <h3>Claude'i kasutus ja kulu</h3>
-    <dl class="stats">
-      <dt>Täna</dt><dd id="usage-today"></dd>
-      <dt>Sel kuul</dt><dd id="usage-month"></dd>
-      <dt>Sellest kirjade märgistamine</dt><dd id="usage-mark"></dd>
-      <dt>Mudel</dt><dd id="usage-model"></dd>
-    </dl>
-    <label>Anthropicu API võti
-      <input id="claude-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-…">
+<dialog id="claude-dialog" class="dialog">
+  <form method="dialog">
+    <h3>Claude sinu tellimusega</h3>
+    <p class="hint">Taskmeil ei kutsu Claude'i ise välja ega vaja API võtit. Claude loeb sinu postkasti oma rakenduses (claude.ai) Microsoft 365 konnektori kaudu ja märgib tegevust nõudvad kirjad Outlooki kategooriaga. Taskmeil näitab neid märke postkastis; ülesanne lisandub alles sinu klõpsuga.</p>
+    <ol class="hint">
+      <li>Ava Claude ja kontrolli, et Microsoft 365 konnektor on ühendatud.</li>
+      <li>Kleebi allolev juhis vestlusse, või tee sellest ajastatud ülesanne („Scheduled“), mis käivitub näiteks igal tööpäeva hommikul.</li>
+      <li>Märgitud kirjad ilmuvad siin pärast värskendamist.</li>
+    </ol>
+    <label>Juhis Claude'ile
+      <textarea id="claude-prompt" rows="9" readonly></textarea>
     </label>
-    <p class="hint">Võti hoitakse ainult selles brauseris ja saadetakse ainult Anthropicule. Igas seadmes (arvuti, telefon) tuleb see eraldi sisestada. Tühi väli lülitab Claude'i välja.</p>
-    <label>Kirjade automaatse märgistamise limiit kuus (eurodes)
-      <input id="usage-limit" type="number" min="0" step="0.05" inputmode="decimal" required>
-    </label>
-    <p class="hint">Kui selle kuu märgistamise kulu jõuab limiidini, lõpetab Claude kirjade märgistamise kuni järgmise kuuni. Nupud „Claude: tee ülesanne“ ja „Claude: kirjuta vastus“ töötavad edasi. 0 lülitab märgistamise välja. Kulu on hinnang selles brauseris tehtud päringute põhjal, dollaritest eurodesse arvestatud kindla kursiga; täpne arve on Anthropicu konsoolis.</p>
     <div class="dialog-actions">
-      <button id="usage-cancel" type="button" class="btn">Sulge</button>
-      <button type="submit" class="btn primary">Salvesta</button>
+      <button id="claude-close" type="button" class="btn">Sulge</button>
+      <a class="btn" href="https://claude.ai/new" target="_blank" rel="noopener">Ava Claude</a>
+      <button id="claude-copy" type="button" class="btn primary">Kopeeri juhis</button>
     </div>
   </form>
 </dialog>
 
 <dialog id="task-dialog" class="dialog">
   <form id="task-form" method="dialog">
-    <h3>Claude'i ettepanek ülesandeks</h3>
+    <h3>Uus ülesanne kirjast</h3>
     <label>Ülesanne
       <input id="task-title" type="text" maxlength="255" required>
     </label>

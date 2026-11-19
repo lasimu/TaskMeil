@@ -1,5 +1,5 @@
 // Headless smoke test: runs the browser code in jsdom against a fake
-// Microsoft Graph and a fake Anthropic API, and checks the main flows.
+// Microsoft Graph, and checks the main flows.
 // Run with: npm test
 // It does not prove the real sign-in or the real Graph calls work.
 
@@ -21,7 +21,12 @@ for (const key of ["document", "DOMParser", "Node", "location", "HTMLElement"]) 
 }
 globalThis.window = window;
 globalThis.localStorage = window.localStorage;
-localStorage.setItem("taskmeil.claudeKey", "sk-ant-test");
+// Claude is reached only by copying text and opening its own app.
+const copied = [];
+const opened = [];
+Object.defineProperty(window.navigator, "clipboard", { value: { writeText: async (text) => void copied.push(text) } });
+Object.defineProperty(globalThis, "navigator", { value: window.navigator, configurable: true });
+window.open = (url) => void opened.push(url);
 globalThis.confirm = window.confirm = () => true;
 const proto = window.HTMLDialogElement.prototype;
 if (!proto.showModal) {
@@ -62,6 +67,7 @@ const mails = [
     from: person("Mari Maasikas", "mari@klient.ee"),
     toRecipients: [person("Mina Ise", "mina@uusmaa.ee"), person("Kolleeg", "kolleeg@uusmaa.ee")],
     ccRecipients: [], receivedDateTime: at(9).toISOString(), bodyPreview: "Tere, palun saatke...",
+    categories: ["Klient", "Claude: ülesanne", "claude: kiire"],
     webLink: "https://outlook.office.com/mail/m1",
     body: {
       contentType: "html",
@@ -90,36 +96,7 @@ const fakeFetch = async (url, options = {}) => {
   calls.push({ method, path: u.pathname, query: u.searchParams, body, headers: options.headers || {} });
   const p = u.pathname.replace("/v1.0", "");
 
-  if (u.hostname === "api.anthropic.com") {
-    assert.equal(u.pathname, "/v1/messages");
-    assert.equal(new Headers(options.headers).get("authorization"), "Bearer sk-ant-test");
-    const prompt = body.messages[0].content;
-    const reply = (result, usage = { input_tokens: 1000, output_tokens: 200 }) => json({
-      id: "msg_1", type: "message", role: "assistant", model: body.model,
-      content: [{ type: "text", text: JSON.stringify(result) }],
-      stop_reason: "end_turn", stop_sequence: null, usage,
-    });
-    assert.match(prompt, /User: Mina Ise/);
-    if (body.model === "claude-haiku-5-5") {
-      assert.match(prompt, /<email n="1">\nFrom: Mari Maasikas <mari@klient.ee>/);
-      assert.match(prompt, /<email n="2">/);
-      assert.equal(body.fallbacks, undefined, "the small model is asked without a fallback");
-      return reply(
-        { tasks: [
-          { n: 1, title: "Saada Marile pakkumine", due_date: "2026-11-20", importance: "high" },
-          { n: 9, title: "Ei ole olemas", due_date: null, importance: "normal" },
-        ] },
-        { input_tokens: 90000, output_tokens: 60000 }
-      );
-    }
-    assert.equal(body.model, "claude-opus-5-5");
-    assert.equal(body.fallbacks, "default");
-    assert.match(prompt, /palun saatke pakkumine reedeks/);
-    assert.doesNotMatch(prompt, /alert|color:red/);
-    return prompt.startsWith("Turn this email into one to-do item")
-      ? reply({ title: "Saada Marile pakkumine Tamme 5 kohta", notes: "Mari Maasikas soovib pakkumist.", due_date: "reedel", importance: "high" })
-      : reply({ body: "Tere, Mari!\n\nSaadan pakkumise reedeks.\n\nMina Ise" });
-  }
+  assert.equal(u.hostname, "graph.microsoft.com", "the app talks to Microsoft only");
   assert.equal(options.headers.Authorization, "Bearer graph-token");
 
   if (p === "/me/mailFolders/inbox/messages") return json({ value: mails });
@@ -205,14 +182,14 @@ assert.equal(document.querySelectorAll("#cal-grid .event").length, 2);
 assert.equal(document.querySelectorAll("#cal-allday .allday").length, 1);
 assert.match(document.querySelectorAll("#cal-grid .event")[1].getAttribute("style"), /width: calc\(50% - 31px\)/, "overlapping events share the width");
 
-// Claude marks inbox mail worth a task; nothing is added until the user confirms
-assert.equal(calls.filter((c) => c.path === "/v1/messages").length, 1, "one triage call for the new mail");
+// Claude's mark (an Outlook category) shows in the inbox; nothing is added until the user confirms
 assert.equal(document.querySelectorAll(".mail-suggest").length, 1);
-assert.match(document.querySelector(".mail-item .mail-suggest-title").textContent, /Saada Marile pakkumine/);
-assert.equal(sent("POST", "/tasks").length, 0, "marking a mail adds no task");
+assert.match(document.querySelector(".mail-item .mail-suggest-title").textContent, /Claude: vajab tegevust, kiire/);
+assert.equal(sent("POST", "/tasks").length, 0, "a mark adds no task");
 click(document.querySelector(".mail-suggest .btn"));
 assert.equal($("task-dialog").hasAttribute("open"), true);
-assert.equal($("task-title").value, "Saada Marile pakkumine");
+assert.equal($("task-title").value, "Pakkumine Tamme 5 korterile");
+assert.equal($("task-importance").value, "high", "an urgent mark makes the task important");
 assert.equal($("read-view").hidden, true, "the suggestion button does not open the mail");
 submit($("task-form"));
 await tick();
@@ -220,9 +197,11 @@ await tick();
   const added = sent("POST", "/tasks");
   assert.equal(added.length, 1);
   assert.equal(added[0].body.linkedResources[0].webUrl, "https://outlook.office.com/mail/m1");
+  assert.deepEqual(sent("PATCH", "/me/messages/m1")[0].body, { categories: ["Klient"] }, "Claude's mark is taken off, the user's own category stays");
   assert.equal(document.querySelectorAll(".mail-suggest").length, 0, "the mark goes away once the task is added");
-  assert.match($("claude-usage").textContent, /1 päringut · 150[\s\u00a0]?000 tokenit · kokku hinnanguliselt 0,04 € · märgistamine 0,04 € \/ 0,50 € kuus/);
   calls.splice(calls.indexOf(added[0]), 1); // keep the later checks counting from zero
+  calls.splice(calls.indexOf(sent("PATCH", "/me/messages/m1")[0]), 1);
+  mails[0].categories = ["Klient"];
 }
 assert.equal(document.querySelectorAll("#task-list .task").length, 3);
 
@@ -240,28 +219,32 @@ assert.doesNotMatch($("read-body").srcdoc, /cid:/);
 assert.equal(sent("PATCH", "/me/messages/m1")[0].body.isRead, true);
 assert.equal(document.querySelectorAll(".mail-item.unread").length, 0);
 
-// Claude: email -> task suggestion -> saved only after the user confirms
+// Email -> task form filled from the email -> saved only after the user confirms
 click($("act-task"));
-await tick();
 assert.equal($("task-dialog").hasAttribute("open"), true);
-assert.equal($("task-title").value, "Saada Marile pakkumine Tamme 5 kohta");
-assert.equal($("task-due").value, "", "a due date that is not a date is dropped");
+assert.equal($("task-title").value, "Pakkumine Tamme 5 korterile");
+assert.match($("task-notes").value, /Kiri: Mari Maasikas – Pakkumine Tamme 5 korterile/);
 assert.equal(sent("POST", "/tasks").length, 0, "nothing is saved before the user confirms");
 submit($("task-form"));
 await tick();
 const newTask = sent("POST", "/tasks")[0].body;
-assert.equal(newTask.importance, "high");
+assert.equal(newTask.importance, "normal");
 assert.equal(newTask.linkedResources[0].webUrl, "https://outlook.office.com/mail/m1");
-assert.equal(newTask.dueDateTime, undefined);
 assert.equal(document.querySelectorAll("#task-list .task").length, 4);
 
-// Claude: reply draft -> nothing is sent until "Saada"
+// Reply with Claude: the email is copied and Claude's own app opened; nothing is sent until "Saada"
 click($("act-draft"));
 await tick();
 assert.equal($("compose-to").value, "mari@klient.ee");
 assert.equal($("compose-subject").value, "RE: Pakkumine Tamme 5 korterile");
-assert.match($("compose-body").value, /Saadan pakkumise reedeks/);
-assert.equal(sent("POST", "/createReply").length + sent("POST", "/send").length, 0, "Claude's draft sends nothing");
+assert.deepEqual(opened, ["https://claude.ai/new"]);
+assert.equal(copied.length, 1);
+assert.match(copied[0], /Minu nimi: Mina Ise/);
+assert.match(copied[0], /palun saatke pakkumine reedeks/);
+assert.doesNotMatch(copied[0], /alert|color:red/);
+assert.equal($("compose-body").value, "", "the reply box waits for the user");
+assert.equal(sent("POST", "/createReply").length + sent("POST", "/send").length, 0, "asking Claude sends nothing");
+$("compose-body").value = "Tere, Mari!\n\nSaadan pakkumise reedeks.\n\nMina Ise";
 click($("compose-send"));
 await tick();
 assert.equal(sent("POST", "/createReply").length, 1);
@@ -349,31 +332,15 @@ assert.equal(localStorage.getItem("taskmeil.view"), "cal");
 click(document.querySelector('.views button[data-view="all"]'));
 assert.equal(document.body.dataset.view, "all");
 
-// Usage dialog: the monthly limit for automatic marking can be changed
-click($("usage-open"));
-assert.equal($("usage-dialog").hasAttribute("open"), true);
-assert.equal($("usage-limit").value, "0.5", "the limit starts at 50 cents");
-assert.match($("usage-mark").textContent, /1 päringut, hinnanguliselt 0,04 € \/ 0,50 € kuus/);
-$("usage-limit").value = "0.01";
-submit($("usage-form"));
-assert.equal($("usage-dialog").hasAttribute("open"), false);
-assert.match($("claude-usage").textContent, /märgistamine 0,04 € \/ 0,01 € kuus \(limiit täis\)/);
-assert.equal(localStorage.getItem("taskmeil.markLimit"), "0.01");
-
-// Without an API key Claude is off and says where to add one
-click($("usage-open"));
-assert.equal($("claude-key").value, "sk-ant-test");
-$("claude-key").value = "";
-submit($("usage-form"));
-assert.equal(localStorage.getItem("taskmeil.claudeKey"), null);
-assert.match($("claude-usage").textContent, /lisa API võti/);
-{
-  const before = calls.length;
-  click($("act-task"));
-  await tick();
-  assert.equal(calls.length, before, "nothing is sent to Claude without a key");
-  assert.match($("toast").textContent, /API võti puudub/);
-}
+// Claude set-up dialog: the standing request can be copied
+click($("claude-open"));
+assert.equal($("claude-dialog").hasAttribute("open"), true);
+assert.match($("claude-prompt").value, /lisa kirjale kategooria „Claude: ülesanne“/);
+click($("claude-copy"));
+await tick();
+assert.equal(copied.at(-1), $("claude-prompt").value);
+click($("claude-close"));
+assert.equal($("claude-dialog").hasAttribute("open"), false);
 
 // Sliding a mail left on a touchscreen deletes it, with undo; the mouse does not
 {

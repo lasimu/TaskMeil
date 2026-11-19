@@ -8,9 +8,9 @@ installs to the home screen of a phone or computer.
   On a phone one pane shows at a time, with tabs at the bottom.
 - **Sign-in:** Microsoft work account (MSAL.js, Uus Maa Entra tenant).
 - **Data:** straight from Microsoft Graph in the browser. Nothing is stored on our server.
-- **Claude:** turns an email into a task suggestion and writes reply drafts. Claude never sends
-  anything; a message goes out only when the user presses "Saada". The browser calls the
-  Anthropic API directly with the user's own API key.
+- **Claude:** works through the user's own Claude subscription, in Claude's own app. It marks
+  the emails that need action with an Outlook category, and Taskmeil shows the marks. For a reply,
+  Taskmeil copies the email and opens Claude. Taskmeil itself never calls Claude and holds no API key.
 - **Hosting:** Azure Static Web Apps (Free), static files only; there is no server code.
 
 ## Layout
@@ -20,8 +20,8 @@ installs to the home screen of a phone or computer.
 | `public/` | The app: plain HTML, CSS and JavaScript modules, no build step |
 | `public/config.js` | Entra client ID and tenant ID (not secrets) |
 | `public/auth/` | Page that receives the Microsoft sign-in answer (MSAL v5 redirect bridge) |
-| `public/vendor/` | MSAL.js and the Anthropic SDK, copied and bundled from npm with `npm run vendor` |
-| `public/js/claude.js` | Prompts and the call to the Anthropic API |
+| `public/vendor/` | MSAL.js, copied from npm with `npm run vendor` |
+| `public/js/claude.js` | The category names and the texts handed to Claude |
 | `public/staticwebapp.config.json` | Routing and security headers for Azure |
 | `tools/smoke-test.mjs` | Headless test against a fake Graph (`npm test`) |
 
@@ -48,12 +48,12 @@ Azure portal → Create → Static Web App, plan **Free**, deployment source **O
 Every push to `main` then runs the smoke test and deploys. Until the secret exists the
 workflow only runs the test.
 
-### 3. Claude API key
+### 3. Claude (subscription)
 
-Create an API key at platform.claude.com. On a Max, Ultra or Team plan, first link the plan's
-monthly API credits to that Console organization (claude.ai → Settings → Billing → API credits),
-so usage is paid from the subscription. In Taskmeil, open "Kulu ja limiit" and paste the key.
-It is stored in that browser only, so enter it once on each device.
+In claude.ai, connect the Microsoft 365 connector. In Taskmeil, press "Claude" in the top bar and
+copy the request shown there. Paste it into a Claude chat, or save it as a scheduled task in
+claude.ai so it runs every working morning. Claude then puts the category `Claude: ülesanne` (and
+`Claude: kiire` for urgent mail) on the emails that need action.
 
 ### 4. Install on a device
 
@@ -61,22 +61,20 @@ Open the site, sign in, then use "Install app" (Chrome, Edge) or Share → "Add 
 
 ## How Claude is kept in its place
 
-- The browser sends the email text straight to the Anthropic API with the key saved in that
-  browser. Nothing passes through a server of ours. Anyone with access to the browser profile can
-  read the key, so use it on your own devices only.
-- Claude gets text and returns text. It holds no Microsoft Graph token, so it cannot read or send mail.
-- Claude's output only fills an editable form. Saving a task or sending a reply is a separate click.
-- Email content is passed to Claude as data; instructions inside an email are not followed.
-- Inbox suggestions: the sender, subject and first lines of each new inbox email are sent to Claude
-  once, automatically, so it can mark the ones worth a task. A mark adds nothing; the user confirms
-  each task. Verdicts are remembered in the browser, so an email is not sent twice.
+- Taskmeil sends nothing to Claude. Claude reads the mailbox through its own Microsoft 365
+  connector, under the user's Claude account.
+- The request tells Claude to add categories only: no replies, moves or deletions.
+- A mark adds nothing. The user confirms each task, and Taskmeil then takes Claude's categories
+  off the message, leaving the user's own categories in place.
+- A reply request is copied to the clipboard and pasted into Claude by the user. The answer comes
+  back by hand, and a message goes out only when the user presses "Saada".
 
 ## Working on it
 
 ```bash
 npm install          # test tools and MSAL
 npm test             # headless smoke test
-npm run vendor       # refresh public/vendor after updating MSAL or the Anthropic SDK
+npm run vendor       # refresh public/vendor after updating MSAL
 ```
 
 To run locally, install the Static Web Apps CLI (`npm i -g @azure/static-web-apps-cli`) and
