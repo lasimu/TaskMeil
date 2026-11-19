@@ -1,7 +1,7 @@
 // Service worker: makes Taskmeil installable and lets the app shell open
 // without a connection. Mail, calendar and task data are never cached here.
 
-const CACHE = "taskmeil-shell-v5";
+const CACHE = "taskmeil-shell-v6";
 const SHELL = [
   "/",
   "/styles.css",
@@ -19,6 +19,7 @@ const SHELL = [
   "/js/calendar.js",
   "/js/claude.js",
   "/icons/icon-192.png",
+  "/icons/uusmaa-logo-white.svg",
 ];
 
 self.addEventListener("install", (event) => {
