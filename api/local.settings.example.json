@@ -3,8 +3,7 @@
   "Values": {
     "FUNCTIONS_WORKER_RUNTIME": "node",
     "AzureWebJobsStorage": "",
-    "AWS_BEARER_TOKEN_BEDROCK": "Amazon Bedrock API key (or use ANTHROPIC_API_KEY instead)",
-    "AWS_REGION": "eu-north-1",
+    "ANTHROPIC_API_KEY": "Anthropic API key from console.anthropic.com",
     "ENTRA_TENANT_ID": "same value as tenantId in public/config.js",
     "ENTRA_CLIENT_ID": "same value as clientId in public/config.js"
   }

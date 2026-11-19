@@ -96,7 +96,7 @@ globalThis.fetch = window.fetch = async (url, options = {}) => {
       assert.match(body.emails[0].from, /Mari Maasikas <mari@klient.ee>/);
       return json({
         result: { tasks: [{ id: "m1", title: "Saada Marile pakkumine", due_date: "2026-11-20", importance: "high" }] },
-        usage: { model: "eu.anthropic.claude-opus-4-6-v1", input_tokens: 1200, output_tokens: 300, cost_usd: 0.0149 },
+        usage: { model: "claude-opus-5-5", input_tokens: 1200, output_tokens: 300, cost_usd: 0.0149 },
       });
     }
     assert.match(body.email.body, /palun saatke pakkumine reedeks/);

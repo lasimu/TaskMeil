@@ -47,13 +47,11 @@ Azure portal → Create → Static Web App, plan **Free**, deployment source **O
 
 | Name | Value |
 |---|---|
-| `AWS_BEARER_TOKEN_BEDROCK` | Amazon Bedrock API key. With this set, Claude runs through Bedrock and email text stays inside AWS |
-| `AWS_REGION` | Bedrock region, e.g. `eu-north-1`. Required with the Bedrock key |
-| `ANTHROPIC_API_KEY` | Alternative to the two above: key from console.anthropic.com |
+| `ANTHROPIC_API_KEY` | Anthropic API key from console.anthropic.com |
 | `ENTRA_TENANT_ID` | Same as `tenantId` in `public/config.js` |
 | `ENTRA_CLIENT_ID` | Same as `clientId` in `public/config.js` |
 | `ALLOWED_USERS` | Optional. Comma-separated sign-in addresses allowed to use Claude |
-| `CLAUDE_MODEL` | Optional. Defaults to `claude-opus-5-5` (`anthropic.claude-opus-5-5` on Bedrock) |
+| `CLAUDE_MODEL` | Optional. Defaults to `claude-opus-5-5` |
 
 Every push to `main` then runs the smoke test and deploys. Until the secret exists the
 workflow only runs the test.

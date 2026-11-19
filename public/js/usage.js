@@ -1,6 +1,6 @@
 // Claude usage counter: tokens and estimated cost of the calls made from this
 // browser, and the monthly limit for automatic task marking. The cost is an
-// estimate for orientation; the real bill is in AWS.
+// estimate for orientation; the real bill is in the Anthropic console.
 
 import { $ } from "./util.js";
 import { localDate } from "./graph.js";
