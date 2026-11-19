@@ -108,7 +108,8 @@ async function unmark(id) {
   renderList();
 }
 
-function suggestionRow(m) {
+// open: the mail is open, and its own buttons right below already offer the task.
+function suggestionRow(m, open = false) {
   if (!isMarked(m)) return null;
   const stop = (fn) => (e) => {
     e.stopPropagation();
@@ -116,14 +117,15 @@ function suggestionRow(m) {
   };
   return h("div", { class: "mail-suggest", onclick: (e) => e.stopPropagation() },
     h("span", { class: "mail-suggest-title", title: "Claude märkis selle kirja" },
-      has(m, URGENT) ? "✓ Claude: vajab tegevust, kiire" : "✓ Claude: vajab tegevust"),
-    h("button", {
+      has(m, URGENT) ? "✓ Vajab tegevust · kiire" : "✓ Vajab tegevust"),
+    !open && h("button", {
       class: "btn small",
       type: "button",
+      title: "Lisa ülesandeks",
       onclick: stop(() =>
         proposeTask(taskFromMail(m), m, () => attempt("Märke eemaldamine", () => unmark(m.id)))
       ),
-    }, "Lisa ülesanne"),
+    }, "Lisa"),
     h("button", {
       class: "btn small ghost",
       type: "button",
@@ -209,6 +211,35 @@ async function deleteBySwipe(m) {
   return true;
 }
 
+// First letters of the sender's first two names, for the round badge.
+function initials(name) {
+  const words = name.replace(/[^\p{L}\p{N}\s]/gu, " ").trim().split(/\s+/).filter(Boolean);
+  return (words.slice(0, 2).map((w) => w[0]).join("") || "?").toUpperCase();
+}
+
+// The open mail gets its two most used actions right in the list.
+function openActions(m) {
+  const stop = (fn) => (e) => {
+    e.stopPropagation();
+    fn();
+  };
+  return h("div", { class: "mail-actions", onclick: (e) => e.stopPropagation() },
+    h("button", {
+      class: "btn small primary",
+      type: "button",
+      onclick: stop(() => {
+        const mail = state.current?.id === m.id ? state.current : m;
+        proposeTask(taskFromMail(mail), mail, () => attempt("Märke eemaldamine", () => unmark(m.id)));
+      }),
+    }, "Lisa ülesandeks"),
+    h("button", {
+      class: "btn small danger",
+      type: "button",
+      onclick: stop(() => attempt("Kustutamine", () => deleteBySwipe(m))),
+    }, "Kustuta")
+  );
+}
+
 function renderList() {
   const list = $("mail-list");
   list.replaceChildren(
@@ -224,13 +255,17 @@ function renderList() {
           if (e.key === "Enter") attempt("Kirja avamine", () => openMessage(m.id));
         },
       },
-        h("div", { class: "mail-top" },
-          h("span", { class: "mail-from" }, who(m.from)),
-          h("time", {}, fmtShort(new Date(m.receivedDateTime)))
-        ),
-        h("div", { class: "mail-subject" }, (m.hasAttachments ? "📎 " : "") + (m.subject || "(teemata)")),
-        h("div", { class: "mail-preview" }, m.bodyPreview || ""),
-        suggestionRow(m)
+        h("span", { class: "avatar", "aria-hidden": "true" }, initials(who(m.from))),
+        h("div", { class: "mail-main" },
+          h("div", { class: "mail-top" },
+            h("span", { class: "mail-from" }, who(m.from)),
+            h("time", {}, fmtShort(new Date(m.receivedDateTime)))
+          ),
+          h("div", { class: "mail-subject" }, (m.hasAttachments ? "📎 " : "") + (m.subject || "(teemata)")),
+          h("div", { class: "mail-preview" }, m.bodyPreview || ""),
+          suggestionRow(m, state.current?.id === m.id),
+          state.current?.id === m.id && openActions(m)
+        )
       ), m)
     )
   );

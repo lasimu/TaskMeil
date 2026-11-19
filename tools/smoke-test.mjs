@@ -184,7 +184,7 @@ assert.match(document.querySelectorAll("#cal-grid .event")[1].getAttribute("styl
 
 // Claude's mark (an Outlook category) shows in the inbox; nothing is added until the user confirms
 assert.equal(document.querySelectorAll(".mail-suggest").length, 1);
-assert.match(document.querySelector(".mail-item .mail-suggest-title").textContent, /Claude: vajab tegevust, kiire/);
+assert.match(document.querySelector(".mail-item .mail-suggest-title").textContent, /Vajab tegevust · kiire/);
 assert.equal(sent("POST", "/tasks").length, 0, "a mark adds no task");
 click(document.querySelector(".mail-suggest .btn"));
 assert.equal($("task-dialog").hasAttribute("open"), true);
@@ -218,6 +218,18 @@ assert.match($("read-body").srcdoc, /src="data:image\/png;base64,iVBORw0KGgo="/,
 assert.doesNotMatch($("read-body").srcdoc, /cid:/);
 assert.equal(sent("PATCH", "/me/messages/m1")[0].body.isRead, true);
 assert.equal(document.querySelectorAll(".mail-item.unread").length, 0);
+
+// The open mail shows its own buttons in the list: add as a task, delete
+{
+  const actions = document.querySelectorAll(".mail-item.selected .mail-actions .btn");
+  assert.deepEqual([...actions].map((b) => b.textContent), ["Lisa ülesandeks", "Kustuta"]);
+  assert.equal(document.querySelectorAll(".mail-actions").length, 1, "only the open mail has them");
+  click(actions[0]);
+  assert.equal($("task-dialog").hasAttribute("open"), true);
+  assert.equal($("task-title").value, "Pakkumine Tamme 5 korterile");
+  assert.equal(sent("POST", "/tasks").length, 0, "nothing is saved before the user confirms");
+  click($("task-cancel"));
+}
 
 // Email -> task form filled from the email -> saved only after the user confirms
 click($("act-task"));
